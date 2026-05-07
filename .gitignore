@@ -1,0 +1,8 @@
+bin/
+coverage.out
+*.test
+.DS_Store
+.env
+.env.*
+*.local
+.go-code-context/
