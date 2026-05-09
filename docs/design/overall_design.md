@@ -28,7 +28,7 @@ MCP Server 会保留在未来规划中，但当前不作为最高优先级。近
 1. **索引状态和可搜索性增强**：在非 MCP 场景先完善索引状态、进度记录和部分可搜索基础能力，为后续异步 MCP 复用。
 2. **增量索引与自动同步基础**：基于文件 hash snapshot 识别新增、删除和修改文件，避免每次全量重建。
 3. **代码切块质量提升**：优先实现 Go AST splitter，后续再评估 tree-sitter 多语言 splitter；无法解析时回退到行级切块。
-4. **混合检索**：在 dense vector 基础上补充关键词/BM25 类召回信号，当前先完成本地关键词融合，后续规划 Milvus hybrid collection。
+4. **混合检索**：在 dense vector 基础上补充关键词/BM25 类召回信号，并按 code、knowledge、conversation、preference 等来源类型配置 semantic/keyword 权重，后续规划 Milvus hybrid collection。
 5. **文件包含与排除规则增强**：支持默认规则、环境变量自定义扩展名/忽略规则、根目录 `.gitignore` 和 `.xxxignore`。
 6. **Ollama embedding**：已支持本地 Ollama `/api/embed` provider，VoyageAI、Gemini 暂缓。
 7. **代码项目隔离机制**：规划代码索引独立 namespace/collection 策略，避免代码库、知识库和长期记忆互相影响；本地默认仍可使用 namespace，Milvus 后续按 codebase collection 或稳定隔离键演进。

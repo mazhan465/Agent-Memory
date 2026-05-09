@@ -6,7 +6,10 @@
 
 package config
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envStorageDir, "/tmp/agent-memory-test")
@@ -24,6 +27,8 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envMilvusCollection, "test_collection")
 	t.Setenv(envCustomExtensions, "vue,.svelte")
 	t.Setenv(envCustomIgnorePatterns, "private/**,*.backup")
+	t.Setenv("AGENT_MEMORY_SEARCH_CODE_SEMANTIC_WEIGHT", "0.2")
+	t.Setenv("AGENT_MEMORY_SEARCH_CODE_KEYWORD_WEIGHT", "0.8")
 
 	cfg, err := Load()
 	if err != nil {
@@ -74,13 +79,16 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	if !containsString(cfg.IgnorePatterns, "private/**") || !containsString(cfg.IgnorePatterns, "*.backup") {
 		t.Fatalf("IgnorePatterns does not contain custom patterns: %v", cfg.IgnorePatterns)
 	}
+	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
+	if codeStrategy.SemanticWeight != 0.2 || codeStrategy.KeywordWeight != 0.8 {
+		t.Fatalf("code strategy = %+v, want semantic=0.2 keyword=0.8", codeStrategy)
+	}
+	conversationStrategy := cfg.SearchStrategy(SearchStrategyConversation)
+	if conversationStrategy.SemanticWeight != 0.85 || conversationStrategy.KeywordWeight != 0.15 {
+		t.Fatalf("conversation strategy = %+v, want semantic=0.85 keyword=0.15", conversationStrategy)
+	}
 }
 
 func containsString(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(values, want)
 }

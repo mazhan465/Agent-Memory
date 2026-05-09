@@ -983,3 +983,50 @@
 
 - 后续按需支持 Ollama embedding dimension 预检测或启动前健康检查。
 - VoyageAI、Gemini embedding 暂缓。
+
+## 2026-05-09 按来源类型配置混合检索权重
+
+### 目标
+
+混合检索不能所有来源使用同一组 dense/keyword 权重。代码、知识库文档、历史会话、用户偏好、工具历史等内容结构不同，需要按来源类型配置不同搜索策略。
+
+### 方案
+
+- `internal/config` 新增 `SearchStrategy`，包含 `SemanticWeight` 和 `KeywordWeight`。
+- `Config` 新增 `SearchStrategies`，内置不同来源的默认权重：
+  - `code`：semantic 0.60，keyword 0.40，偏向符号、路径和精确 API 名。
+  - `knowledge`：semantic 0.70，keyword 0.30，兼顾概念语义和标题/API/错误码命中。
+  - `conversation`：semantic 0.85，keyword 0.15，更偏自然语言语义。
+  - `experience`：semantic 0.75，keyword 0.25。
+  - `preference`：semantic 0.55，keyword 0.45，更重视偏好/规则中的精确关键词。
+  - `tool_history`：semantic 0.80，keyword 0.20。
+  - `fact`：semantic 0.65，keyword 0.35。
+- 支持通过环境变量覆盖权重，例如：
+  - `AGENT_MEMORY_SEARCH_CODE_SEMANTIC_WEIGHT`
+  - `AGENT_MEMORY_SEARCH_CODE_KEYWORD_WEIGHT`
+  - `AGENT_MEMORY_SEARCH_KNOWLEDGE_SEMANTIC_WEIGHT`
+  - `AGENT_MEMORY_SEARCH_KNOWLEDGE_KEYWORD_WEIGHT`
+- CLI 搜索时根据 namespace 的 `source_type` 映射策略，并写入 `SearchOptions.SemanticWeight` / `KeywordWeight`。
+- 搜索 JSON 的 `searched_namespaces` 中返回 `strategy`、`semantic_weight`、`keyword_weight`，便于调试。
+
+### 模块影响
+
+- `internal/config/search_strategy.go`：新增搜索策略默认值、环境变量覆盖和权重归一化。
+- `internal/config/config.go`：新增 `SearchStrategies` 字段。
+- `cmd/code-context/search.go`：按 source type 应用搜索策略。
+- `cmd/code-context/search_strategy_test.go`：新增来源类型到策略名称映射测试。
+- `internal/config/config_test.go`：新增搜索策略环境变量覆盖测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新策略说明。
+
+### 验证方式
+
+- `gofmt -w internal/config/config.go internal/config/config_test.go internal/config/search_strategy.go cmd/code-context/search.go cmd/code-context/search_strategy_test.go`
+- `go test ./internal/config ./cmd/code-context ./internal/vectorstore`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 后续 Milvus hybrid collection 也应复用同一套来源类型搜索策略。
+- 可继续扩展为基于查询意图动态调整权重，例如符号型 query 自动提高 keyword 权重。

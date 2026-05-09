@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/mazhan465/Agent-Memory/internal/catalog"
+	"github.com/mazhan465/Agent-Memory/internal/config"
 	"github.com/mazhan465/Agent-Memory/internal/contextdoc"
 	"github.com/mazhan465/Agent-Memory/internal/domain"
 	"github.com/mazhan465/Agent-Memory/internal/indexer"
@@ -47,10 +48,13 @@ type searchJSONResponse struct {
 }
 
 type searchJSONNamespace struct {
-	Category   string `json:"category"`
-	SourceType string `json:"source_type"`
-	SourceID   string `json:"source_id,omitempty"`
-	Namespace  string `json:"namespace"`
+	Category       string  `json:"category"`
+	SourceType     string  `json:"source_type"`
+	SourceID       string  `json:"source_id,omitempty"`
+	Namespace      string  `json:"namespace"`
+	Strategy       string  `json:"strategy"`
+	SemanticWeight float64 `json:"semantic_weight"`
+	KeywordWeight  float64 `json:"keyword_weight"`
 }
 
 type searchJSONResult struct {
@@ -417,6 +421,13 @@ func (a *app) appendNamespaceResults(
 	searchNamespace searchJSONNamespace,
 	response *searchJSONResponse,
 ) ([]categorizedSearchResult, error) {
+	strategyName := searchStrategyName(searchNamespace)
+	strategy := a.config.SearchStrategy(strategyName)
+	options.SemanticWeight = strategy.SemanticWeight
+	options.KeywordWeight = strategy.KeywordWeight
+	searchNamespace.Strategy = strategyName
+	searchNamespace.SemanticWeight = strategy.SemanticWeight
+	searchNamespace.KeywordWeight = strategy.KeywordWeight
 	response.SearchedNamespaces = append(response.SearchedNamespaces, searchNamespace)
 	matches, err := a.vectorStore.Search(ctx, namespace, queryVector, options)
 	if err != nil {
@@ -435,6 +446,27 @@ func (a *app) appendNamespaceResults(
 		})
 	}
 	return results, nil
+}
+
+func searchStrategyName(searchNamespace searchJSONNamespace) string {
+	switch searchNamespace.SourceType {
+	case string(contextdoc.SourceTypeCodebase):
+		return config.SearchStrategyCode
+	case string(contextdoc.SourceTypeDocument), string(contextdoc.SourceTypeExternalKnowledge):
+		return config.SearchStrategyKnowledge
+	case string(contextdoc.SourceTypeConversation):
+		return config.SearchStrategyConversation
+	case string(contextdoc.SourceTypeExperience):
+		return config.SearchStrategyExperience
+	case string(contextdoc.SourceTypePreference):
+		return config.SearchStrategyPreference
+	case string(contextdoc.SourceTypeToolHistory):
+		return config.SearchStrategyToolHistory
+	case string(contextdoc.SourceTypeFact):
+		return config.SearchStrategyFact
+	default:
+		return config.SearchStrategyDefault
+	}
 }
 
 func makeSearchJSONResults(results []categorizedSearchResult) []searchJSONResult {

@@ -45,6 +45,12 @@ const (
 	envCustomIgnorePatterns     = "AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS"
 )
 
+// SearchStrategy 表示指定来源类型的混合检索权重。
+type SearchStrategy struct {
+	SemanticWeight float64
+	KeywordWeight  float64
+}
+
 // Config 表示 Agent-Memory 的运行配置。
 type Config struct {
 	StorageDir           string
@@ -63,6 +69,7 @@ type Config struct {
 	MaxChunkLines        int
 	ChunkOverlapLines    int
 	SearchLimit          int
+	SearchStrategies     map[string]SearchStrategy
 	SupportedExts        []string
 	IgnoreNames          []string
 	IgnorePatterns       []string
@@ -70,6 +77,9 @@ type Config struct {
 
 // Load 从环境变量和默认值加载配置。
 func Load() (Config, error) {
+	searchStrategies := defaultSearchStrategies()
+	applySearchStrategyEnv(searchStrategies)
+
 	storageDir, err := defaultHomeStorageDir()
 	if err != nil {
 		return Config{}, err
@@ -95,6 +105,7 @@ func Load() (Config, error) {
 		MaxChunkLines:        defaultMaxChunkLines,
 		ChunkOverlapLines:    defaultChunkOverlap,
 		SearchLimit:          defaultSearchLimit,
+		SearchStrategies:     searchStrategies,
 		SupportedExts: mergeCSVValues([]string{
 			".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
 			".cs", ".rs", ".php", ".rb", ".swift", ".kt", ".scala", ".m", ".mm", ".dart", ".sol",
