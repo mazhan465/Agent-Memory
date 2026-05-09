@@ -793,3 +793,44 @@
 - 然后实现 Go AST splitter，并规划 tree-sitter 多语言切块。
 - 再补充本地关键词/BM25 召回抽象和 Milvus hybrid collection 规划。
 - 接入 Ollama embedding provider。
+
+## 2026-05-09 文件 hash 增量索引基础能力
+
+### 目标
+
+在现有 CLI `index` 流程中接入文件 hash snapshot，首次或旧快照缺少哈希时执行全量索引，后续自动对比新增、修改和删除文件，只替换变化文件对应的 chunk。
+
+### 方案
+
+- `snapshot.Info` 增加 `file_hashes` 字段，记录 `relative_path -> sha256(content)`。
+- `Indexer.Index` 调整为增量优先：先读取旧快照，再写入 `indexing` 状态，避免覆盖旧 hash。
+- 首次索引或旧快照缺少 `file_hashes` 时执行全量 `VectorStore.Put`。
+- 有可用旧快照时，对比当前文件 hash，得到 added / modified / removed。
+- 只对 added / modified 文件重新切块、embedding 和构建向量文档。
+- `VectorStore` 新增 `ReplaceFiles` 接口，用于删除指定 `relative_path` 的旧 chunk 并写入新 chunk。
+- `LocalStore.ReplaceFiles` 通过加载本地 JSON、过滤旧文件 chunk、追加新文档并稳定排序实现。
+- `MilvusStore.ReplaceFiles` 通过 namespace + relative_path 过滤表达式删除旧 chunk，再插入新文档并 flush。
+- CLI `index` 输出新增 `added`、`modified`、`removed` 和 `full_reindex`，方便判断本次索引类型。
+
+### 模块影响
+
+- `internal/indexer`：实现增量索引流程、文件 hash 对比和变更统计。
+- `internal/snapshot`：快照增加 `file_hashes`。
+- `internal/vectorstore`：接口增加 `ReplaceFiles`，本地和 Milvus 实现同步补齐。
+- `cmd/code-context`：索引命令输出增量统计。
+- `internal/indexer/indexer_test.go`：新增首次全量、后续新增/修改/删除的增量索引测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新设计和当前能力。
+
+### 验证方式
+
+- `gofmt -w internal/indexer internal/snapshot internal/vectorstore cmd/code-context/main.go`
+- `go test ./internal/indexer ./internal/vectorstore ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 继续补充索引状态和自动同步入口，例如独立 `sync` 命令或后台同步服务。
+- 实现 Go AST splitter，提升代码 chunk 的语义完整度。
+- 规划代码 source 的 collection / namespace 隔离策略，避免长期单 collection 在大规模代码索引场景下扩展受限。

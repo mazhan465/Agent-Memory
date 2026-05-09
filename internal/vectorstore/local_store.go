@@ -34,15 +34,37 @@ func (s *LocalStore) Put(ctx context.Context, namespace string, documents []Docu
 		return ctx.Err()
 	default:
 	}
+	return s.save(namespace, documents)
+}
 
-	if err := os.MkdirAll(s.vectorDir(), 0755); err != nil {
+// ReplaceFiles 替换指定 namespace 中若干文件对应的向量文档。
+func (s *LocalStore) ReplaceFiles(
+	ctx context.Context,
+	namespace string,
+	relativePaths []string,
+	documents []Document,
+) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	existingDocuments, err := s.load(namespace)
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	data, err := json.MarshalIndent(documents, "", "  ")
-	if err != nil {
-		return err
+	deleteSet := makeStringSet(relativePaths)
+	mergedDocuments := make([]Document, 0, len(existingDocuments)+len(documents))
+	for _, document := range existingDocuments {
+		if _, ok := deleteSet[document.RelativePath]; ok {
+			continue
+		}
+		mergedDocuments = append(mergedDocuments, document)
 	}
-	return os.WriteFile(s.namespacePath(namespace), data, 0644)
+	mergedDocuments = append(mergedDocuments, documents...)
+	sortDocuments(mergedDocuments)
+	return s.save(namespace, mergedDocuments)
 }
 
 // Search 在指定 namespace 中执行余弦相似度 TopK 检索。
@@ -127,6 +149,34 @@ func (s *LocalStore) load(namespace string) ([]Document, error) {
 		return nil, err
 	}
 	return documents, nil
+}
+
+func (s *LocalStore) save(namespace string, documents []Document) error {
+	if err := os.MkdirAll(s.vectorDir(), 0755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(documents, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.namespacePath(namespace), data, 0644)
+}
+
+func sortDocuments(documents []Document) {
+	sort.SliceStable(documents, func(i int, j int) bool {
+		left := documents[i]
+		right := documents[j]
+		if left.RelativePath != right.RelativePath {
+			return left.RelativePath < right.RelativePath
+		}
+		if left.StartLine != right.StartLine {
+			return left.StartLine < right.StartLine
+		}
+		if left.EndLine != right.EndLine {
+			return left.EndLine < right.EndLine
+		}
+		return left.ID < right.ID
+	})
 }
 
 func (s *LocalStore) vectorDir() string {

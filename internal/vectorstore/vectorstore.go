@@ -64,6 +64,7 @@ type SearchResult struct {
 // VectorStore 定义向量存储接口。
 type VectorStore interface {
 	Put(ctx context.Context, namespace string, documents []Document) error
+	ReplaceFiles(ctx context.Context, namespace string, relativePaths []string, documents []Document) error
 	Search(ctx context.Context, namespace string, queryVector []float32, options SearchOptions) ([]SearchResult, error)
 	Clear(ctx context.Context, namespace string) error
 	Count(ctx context.Context, namespace string) (int, error)

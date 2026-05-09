@@ -33,6 +33,15 @@ func (f *fakeVectorStore) Put(ctx context.Context, namespace string, documents [
 	return nil
 }
 
+func (f *fakeVectorStore) ReplaceFiles(
+	ctx context.Context,
+	namespace string,
+	relativePaths []string,
+	documents []vectorstore.Document,
+) error {
+	return nil
+}
+
 func (f *fakeVectorStore) Search(ctx context.Context, namespace string, queryVector []float32, options vectorstore.SearchOptions) ([]vectorstore.SearchResult, error) {
 	f.options = options
 	return nil, nil

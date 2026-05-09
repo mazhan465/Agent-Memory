@@ -117,13 +117,14 @@ Application Service
 IndexCodebase(path)
   -> 校验目录
   -> 计算 codebase scope / namespace
-  -> 扫描支持的文件
-  -> 读取文件内容
-  -> 切分为 code chunk
-  -> 归一化为 ContextDocument
-  -> 批量生成 embedding
-  -> 写入 ContextStore
-  -> 保存 snapshot
+  -> 读取上一轮 snapshot 中的 file_hashes
+  -> 扫描支持的文件并读取内容
+  -> 计算当前文件 hash
+  -> 如果没有可用旧快照，则全量切块、embedding 并覆盖写入 ContextStore
+  -> 如果存在旧快照，则对比新增、修改和删除文件
+  -> 只对新增和修改文件切分 code chunk 并批量生成 embedding
+  -> 通过 VectorStore.ReplaceFiles 删除旧文件 chunk 并写入新 chunk
+  -> 保存新的 snapshot 和 file_hashes
 ```
 
 ### 4.2 历史会话索引流程

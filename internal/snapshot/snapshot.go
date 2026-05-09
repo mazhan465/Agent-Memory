@@ -30,13 +30,14 @@ const (
 
 // Info 表示一个代码库的索引快照。
 type Info struct {
-	Path         string    `json:"path"`
-	Namespace    string    `json:"namespace"`
-	Status       Status    `json:"status"`
-	IndexedFiles int       `json:"indexed_files"`
-	TotalChunks  int       `json:"total_chunks"`
-	ErrorMessage string    `json:"error_message,omitempty"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	Path         string            `json:"path"`
+	Namespace    string            `json:"namespace"`
+	Status       Status            `json:"status"`
+	IndexedFiles int               `json:"indexed_files"`
+	TotalChunks  int               `json:"total_chunks"`
+	FileHashes   map[string]string `json:"file_hashes,omitempty"`
+	ErrorMessage string            `json:"error_message,omitempty"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
 // Store 管理快照读写。

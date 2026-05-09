@@ -139,6 +139,46 @@ func (s *MilvusStore) Put(ctx context.Context, namespace string, documents []Doc
 	return s.client.Flush(ctx, s.collectionName, false)
 }
 
+// ReplaceFiles 替换指定 namespace 中若干文件对应的向量文档。
+func (s *MilvusStore) ReplaceFiles(
+	ctx context.Context,
+	namespace string,
+	relativePaths []string,
+	documents []Document,
+) error {
+	if err := validateMilvusTokenValue(namespace); err != nil {
+		return err
+	}
+	if len(relativePaths) == 0 && len(documents) == 0 {
+		return nil
+	}
+	if len(documents) > 0 {
+		dimension, err := documentDimension(documents)
+		if err != nil {
+			return err
+		}
+		if err := s.ensureCollection(ctx, dimension); err != nil {
+			return err
+		}
+	} else {
+		exists, err := s.client.HasCollection(ctx, s.collectionName)
+		if err != nil || !exists {
+			return err
+		}
+	}
+	if len(relativePaths) > 0 {
+		if err := s.deleteFiles(ctx, namespace, relativePaths); err != nil {
+			return err
+		}
+	}
+	if len(documents) > 0 {
+		if _, err := s.client.Insert(ctx, s.collectionName, "", documentColumns(documents)...); err != nil {
+			return err
+		}
+	}
+	return s.client.Flush(ctx, s.collectionName, false)
+}
+
 // Search 在指定 namespace 中执行 Milvus TopK 检索。
 func (s *MilvusStore) Search(ctx context.Context, namespace string, queryVector []float32, options SearchOptions) ([]SearchResult, error) {
 	if err := validateMilvusTokenValue(namespace); err != nil {
@@ -232,6 +272,17 @@ func (s *MilvusStore) countByExpr(ctx context.Context, expr string) (int, error)
 		return 0, nil
 	}
 	return columns[0].Len(), nil
+}
+
+func (s *MilvusStore) deleteFiles(ctx context.Context, namespace string, relativePaths []string) error {
+	if err := s.ensureLoaded(ctx); err != nil {
+		return err
+	}
+	expr, err := buildMilvusFileExpr(namespace, relativePaths)
+	if err != nil {
+		return err
+	}
+	return s.client.Delete(ctx, s.collectionName, "", expr)
 }
 
 func (s *MilvusStore) ensureCollection(ctx context.Context, dimension int) error {
@@ -585,6 +636,20 @@ func columnInt(columns map[string]entity.Column, name string, index int) (int64,
 	return column.GetAsInt64(index)
 }
 
+func buildMilvusFileExpr(namespace string, relativePaths []string) (string, error) {
+	if err := validateMilvusTokenValue(namespace); err != nil {
+		return "", err
+	}
+	pathExpr, err := buildMilvusInExpr(milvusFieldRelativePath, relativePaths, validateMilvusRelativePath)
+	if err != nil {
+		return "", err
+	}
+	if pathExpr == "" {
+		return "", errors.New("milvus relative path filter is empty")
+	}
+	return milvusFieldNamespace + " == " + milvusStringLiteral(namespace) + " and " + pathExpr, nil
+}
+
 func buildMilvusExpr(namespace string, options SearchOptions) (string, error) {
 	if err := validateMilvusTokenValue(namespace); err != nil {
 		return "", err
@@ -713,6 +778,19 @@ func validateMilvusMetadataValue(value string) error {
 			continue
 		}
 		return fmt.Errorf("invalid milvus metadata value %q", value)
+	}
+	return nil
+}
+
+func validateMilvusRelativePath(value string) error {
+	if value == "" {
+		return errors.New("milvus relative path is empty")
+	}
+	for _, char := range value {
+		if char == '_' || char == '-' || char == '/' || char == '.' || char == ' ' || unicode.IsLetter(char) || unicode.IsDigit(char) {
+			continue
+		}
+		return fmt.Errorf("invalid milvus relative path %q", value)
 	}
 	return nil
 }

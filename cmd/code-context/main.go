@@ -144,7 +144,16 @@ func (a *app) runIndex(ctx context.Context, args []string) error {
 		return err
 	}
 
-	fmt.Printf("indexed path=%s namespace=%s files=%d chunks=%d\n", stats.Path, stats.Namespace, stats.IndexedFiles, stats.TotalChunks)
+	fmt.Printf("indexed path=%s namespace=%s files=%d chunks=%d added=%d modified=%d removed=%d full_reindex=%t\n",
+		stats.Path,
+		stats.Namespace,
+		stats.IndexedFiles,
+		stats.TotalChunks,
+		stats.AddedFiles,
+		stats.ModifiedFiles,
+		stats.RemovedFiles,
+		stats.FullReindex,
+	)
 	return nil
 }
 

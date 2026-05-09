@@ -8,7 +8,8 @@
 
 当前版本先实现可运行的 MVP：
 
-- 本地代码库扫描
+- 本地代码库扫描，支持默认忽略规则、环境变量自定义扩展名/忽略规则，以及根目录 `.gitignore` / `.xxxignore`
+- 基于文件 hash snapshot 的增量索引，自动识别新增、修改和删除文件
 - 通用行级代码切块
 - 文档解析器抽象、Markdown 解析器和通用文档节点切块器，解析标题、摘要、正文，并保留 `document_id`、`section_id`、`heading_path`、`knowledge_kind` 和 `node_kind`
 - Markdown 文档源读取能力，可读取 `.md` / `.markdown` 文件并解析为统一文档节点

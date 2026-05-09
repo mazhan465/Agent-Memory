@@ -78,8 +78,8 @@
 
 ### 当前实现
 
-- `LocalStore`：JSON 文件持久化，余弦相似度 TopK 检索。
-- `MilvusStore`：使用 Milvus collection 持久化向量，通过 `namespace` 字段隔离不同代码库。
+- `LocalStore`：JSON 文件持久化，余弦相似度 TopK 检索，并支持 `ReplaceFiles` 按文件替换 chunk。
+- `MilvusStore`：使用 Milvus collection 持久化向量，通过 `namespace` 字段隔离不同代码库，并支持按 `relative_path` 删除旧 chunk 后增量写入。
 
 ### 后续扩展
 
