@@ -54,6 +54,12 @@ make build
 # 导入 Markdown 文档知识 source
 ./bin/code-context import knowledge /path/to/docs project-docs
 
+# 导入 JSONL 长期记忆 source，content 为必填字段
+cat > /tmp/agent-memory-experience.jsonl <<'EOF'
+{"id":"go-log-rule","content":"Go 日志文案应描述在前、参数在后","experience_kind":"domain","domain_path":"programming/go","tags":["go","logging"]}
+EOF
+./bin/code-context import memory experience /tmp/agent-memory-experience.jsonl go-experience
+
 # 使用 OpenAI-compatible embedding
 export AGENT_MEMORY_EMBEDDING_PROVIDER=openai
 export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1

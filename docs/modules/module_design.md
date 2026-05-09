@@ -398,8 +398,6 @@
 
 ### 后续命令
 
-- `memory import <source>`
-- `memory search <query>`
 - `memory extract <conversation>`
 - `memory domain-search <query>`
 - `prompt-context build <query>`

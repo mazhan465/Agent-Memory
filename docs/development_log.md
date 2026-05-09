@@ -649,3 +649,40 @@
 - 将统一搜索扩展为更完整的跨 source shard 聚合检索和上下文组装。
 - 为 `search` 增加 `document_id`、`heading_path`、`knowledge_kind` 和 `node_kind` 过滤参数。
 - 增加 MCP 的 `import knowledge` 和统一 `search` 工具入口。
+
+## 2026-05-09 长期记忆基础导入与 CLI 拆分
+
+### 目标
+
+让项目从“可索引代码和知识文档”推进到“基本可用的 Agent 记忆检索系统”：除代码和知识文档外，至少可以导入历史会话、经验、用户偏好、工具历史和项目事实，并通过统一 `search` JSON 入口返回。
+
+### 方案
+
+- 新增 `cmd/code-context/import.go`，承载导入相关逻辑。
+- 新增 `cmd/code-context/search.go`，承载统一搜索、类型过滤和 JSON 结果组装逻辑。
+- `cmd/code-context/main.go` 保留 CLI 入口、配置初始化、`index`、`status` 和 `clear`，避免单文件超过 800 行。
+- `import memory <type> <json-or-jsonl-path> [source-id]` 支持导入 `conversation`、`experience`、`preference`、`tool_history` 和 `fact`。
+- memory 导入文件支持 JSON 数组和 JSONL 两种格式，每条记录必须包含 `content` 字段。
+- memory 向量文档写入 `source_type`、`source_id`、`record_id`、`role`、`conversation_id`、`message_id`、`tool_name`、`tags`、`domain_path` 和 `experience_kind` 等元数据。
+- memory 导入成功后写入 `SourceCatalog`，统一 `search` 可按类型检索并通过 `category` 标注结果来源。
+
+### 模块影响
+
+- `cmd/code-context`：拆分入口、搜索和导入逻辑，新增 memory 导入能力。
+- `README.md`：补充 memory JSONL 导入示例。
+- `docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：更新基本可用范围。
+
+### 验证方式
+
+- `gofmt -w cmd/code-context/main.go cmd/code-context/search.go cmd/code-context/import.go cmd/code-context/import_test.go`
+- `go test ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 增加 `import list`、`import clear` 和 source 级删除能力。
+- 增加 `search` 的元数据过滤参数。
+- 增加 MCP 工具入口，让 IDE Agent 可直接调用统一搜索和导入能力。
+- 实现会话启动时的 `SessionContext` 自动上下文包组装。
