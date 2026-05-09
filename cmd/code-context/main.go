@@ -67,6 +67,8 @@ func run(ctx context.Context, args []string) error {
 		return application.runSearch(ctx, args[1:])
 	case "import":
 		return application.runImport(ctx, args[1:])
+	case "source":
+		return application.runSource(ctx, args[1:])
 	case "status":
 		return application.runStatus(args[1:])
 	case "clear":
@@ -203,6 +205,8 @@ func printUsage() {
   code-context search <path> <query> [limit] [types]
   code-context import knowledge <path> [source-id]
   code-context import memory <type> <json-or-jsonl-path> [source-id]
+  code-context source list [type]
+  code-context source clear <type> <source-id>
   code-context status <path>
   code-context clear <path>
 
@@ -218,5 +222,6 @@ Examples:
   code-context search . "project rules" knowledge
   code-context search . "previous fix" 5 conversation,experience
   code-context import knowledge ./docs project-docs
-  code-context import memory experience ./memories.jsonl team-experience`)
+  code-context import memory experience ./memories.jsonl team-experience
+  code-context source list knowledge`)
 }

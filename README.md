@@ -16,7 +16,7 @@
 - 哈希向量 Embedder（默认本地可运行，便于验证流程）
 - OpenAI-compatible Embedder（通过环境变量启用真实语义向量）
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
-- CLI：`index`、`search`、`import knowledge`、`clear`、`status`
+- CLI：`index`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`clear`、`status`
 - 模块化接口：后续可替换为 Ollama Embedder 和 Milvus VectorStore
 - 长期记忆设计：后续支持历史会话、工具记录、用户偏好和会话启动上下文构建
 - 文档知识库设计：后续支持书籍、超长说明文档、技术文档、SDK 文档和项目规范入库

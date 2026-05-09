@@ -393,6 +393,9 @@
 - `index <path>`
 - `search <path> <query> [limit] [types]`：统一搜索入口，默认返回全部类型 JSON 结果；`types` 可指定 `code`、`knowledge`、`conversation`、`experience`、`preference`、`tool_history`、`fact`
 - `import knowledge <path> [source-id]`
+- `import memory <type> <json-or-jsonl-path> [source-id]`：导入 `conversation`、`experience`、`preference`、`tool_history`、`fact` 等长期记忆 source
+- `source list [type]`：以 JSON 查看已导入 source
+- `source clear <type> <source-id>`：清理指定 source 的向量和 catalog 记录
 - `status <path>`
 - `clear <path>`
 
@@ -402,7 +405,6 @@
 - `memory domain-search <query>`
 - `prompt-context build <query>`
 - `session-context build <query>`
-- `source list`
 - `source export <source-id>`
 - `source import <bundle>`
 - `source sync <target>`

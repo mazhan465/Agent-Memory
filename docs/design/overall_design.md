@@ -323,6 +323,7 @@ metadata         扩展元数据
 - Markdown 文档解析、文档源读取和通用文档节点切块。
 - `import knowledge` 文档知识导入入口，按 source namespace 写入 Markdown 文档 source。
 - `import memory` 长期记忆导入入口，可导入 JSON / JSONL 格式的历史会话、经验、偏好、工具历史和事实 source。
+- `source list` / `source clear` source 管理入口，可查看和清理已导入 source。
 - `search` 统一搜索入口，默认返回代码、知识文档、历史会话、经验和用户偏好等全部类型的 JSON 结果，也可通过参数只搜索指定类型。
 
 当前 MVP 以代码库索引、Markdown 文档知识 source 和 JSON/JSONL 长期记忆 source 为主。后续需要继续完善 `SessionContext` 自动上下文组装和 MCP 工具入口。

@@ -645,7 +645,7 @@
 
 ### 后续计划
 
-- 增加 `import list` 和按 source 清理能力。
+- 增加 source 查看、清理、导出和导入能力。
 - 将统一搜索扩展为更完整的跨 source shard 聚合检索和上下文组装。
 - 为 `search` 增加 `document_id`、`heading_path`、`knowledge_kind` 和 `node_kind` 过滤参数。
 - 增加 MCP 的 `import knowledge` 和统一 `search` 工具入口。
@@ -682,7 +682,40 @@
 
 ### 后续计划
 
-- 增加 `import list`、`import clear` 和 source 级删除能力。
+- 增加 source 导出和导入能力。
 - 增加 `search` 的元数据过滤参数。
 - 增加 MCP 工具入口，让 IDE Agent 可直接调用统一搜索和导入能力。
 - 实现会话启动时的 `SessionContext` 自动上下文包组装。
+
+## 2026-05-09 Source 管理命令实现
+
+### 目标
+
+补齐基本可用所需的 source 管理能力，让用户可以查看已经导入的知识和记忆 source，并在导入错误或数据过期时清理对应 source。
+
+### 方案
+
+- 新增 `cmd/code-context/source.go`，提供 `source list [type]` 和 `source clear <type> <source-id>`。
+- `source list` 从 `SourceCatalog` 读取 source 元信息，并以 JSON 输出。
+- `source clear` 根据 source type 和 source id 找到匹配 catalog entry，清理对应 namespace 的向量数据并删除 catalog 记录。
+- 新增 source type 参数别名，支持 `knowledge`、`conversation`、`experience`、`preference`、`tool_history` 和 `fact`。
+- 新增 `cmd/code-context/source_test.go` 验证 source type 解析。
+
+### 模块影响
+
+- `cmd/code-context`：新增 source 管理命令和测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新基本可用能力。
+
+### 验证方式
+
+- `gofmt -w cmd/code-context/source.go cmd/code-context/source_test.go`
+- `go test ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 实现 source bundle 导出和导入。
+- 实现 MCP 工具入口。
+- 实现 `SessionContext` 自动上下文包组装。
