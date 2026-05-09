@@ -122,7 +122,7 @@ IndexCodebase(path)
   -> 计算当前文件 hash
   -> 如果没有可用旧快照，则全量切块、embedding 并覆盖写入 ContextStore
   -> 如果存在旧快照，则对比新增、修改和删除文件
-  -> 只对新增和修改文件切分 code chunk，Go 文件优先按 AST 顶层声明切分，其他情况回退行级切块
+  -> 只对新增和修改文件切分 code chunk，Go/C++ 优先按 tree-sitter 语法节点切分，其他情况回退行级切块
   -> 批量生成 embedding
   -> 通过 VectorStore.ReplaceFiles 删除旧文件 chunk 并写入新 chunk
   -> 保存新的 snapshot 和 file_hashes
@@ -526,7 +526,6 @@ chunk             原文细节片段
 14. 实现 `MemoryExtractor`，提取偏好、通用经验、领域专业经验、事实和决策记录。
 15. 实现 `ContextAssembler`，并行搜索代码库、长期记忆、工具历史和文档知识库，一次返回统一上下文包。
 16. 实现 `SessionContextBuilder`，支持会话开始和提示词到达时自动检索长期记忆与文档知识。
-17. 实现 Go AST splitter。
-18. 实现多语言 tree-sitter splitter。
-19. 实现增量索引和后台同步。
-20. 实现 dense + BM25 hybrid search、rerank 和上下文压缩。
+17. 实现统一 tree-sitter 多语言 splitter，当前支持 Go 和 C++，后续扩展 JavaScript、TypeScript、Python 等语言。
+18. 实现增量索引和后台同步。
+19. 实现 dense + BM25 hybrid search、rerank 和上下文压缩。

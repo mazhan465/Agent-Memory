@@ -433,6 +433,8 @@ func languageFromExtension(extension string) string {
 		return "python"
 	case ".java":
 		return "java"
+	case ".cpp", ".cc", ".cxx", ".h", ".hpp":
+		return "cpp"
 	case ".md", ".markdown":
 		return "markdown"
 	default:

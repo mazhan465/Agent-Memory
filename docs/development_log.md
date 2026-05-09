@@ -869,3 +869,44 @@
 - 为 Go AST chunk 增加符号名、声明类型等元数据。
 - 继续规划 tree-sitter 多语言 AST splitter。
 - 开始设计本地关键词/BM25 召回和 Milvus hybrid collection。
+
+## 2026-05-09 统一 tree-sitter 多语言语法切块
+
+### 目标
+
+不再继续维护单语言专用 AST splitter，直接统一接入 tree-sitter。当前优先支持 Go 和 C++，后续 JavaScript、TypeScript、Python 等语言通过新增 tree-sitter language config 扩展。
+
+### 方案
+
+- 新增 `TreeSitterSplitter`，按 language 查找 tree-sitter grammar 配置。
+- 新增 `RangeChunker` 和 `SyntaxNodeRange`，统一将语法节点行区间转换为 `Chunk`。
+- tree-sitter chunk 统一写入 `chunk_kind`、`symbol_name`、`symbol_kind` 和 `parser` 元数据。
+- Go grammar 当前识别 package、import、const、var、type、function 和 method。
+- C++ grammar 当前识别 include、macro、namespace、class、struct、union、template 和 function。
+- tree-sitter 解析失败、语法树含错误、未配置语言或没有有效语法节点时，回退到 `LineSplitter`。
+- tree-sitter grammar 依赖 cgo；无 cgo 构建提供 `tree_sitter_stub.go`，自动退化为 fallback，保证 Linux 交叉编译可用。
+- 移除旧的 `GoASTSplitter`，CLI `index` 改为使用 `TreeSitterSplitter + LineSplitter fallback`。
+
+### 模块影响
+
+- `internal/splitter/tree_sitter.go`：新增统一 tree-sitter 多语言切块器。
+- `internal/splitter/range_chunker.go`：新增语法节点行区间通用切块器。
+- `internal/splitter/tree_sitter_test.go`：验证 Go、C++ 和 fallback。
+- `cmd/code-context/main.go`：索引流程切换为 tree-sitter splitter。
+- `internal/indexer/indexer.go`：C++ 相关扩展名映射为 `cpp`。
+- `go.mod`、`go.sum`：新增 tree-sitter runtime 和 Go/C++ grammar 依赖。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力和路线。
+
+### 验证方式
+
+- `gofmt -w internal/splitter/range_chunker.go internal/splitter/tree_sitter.go internal/splitter/tree_sitter_test.go internal/indexer/indexer.go cmd/code-context/main.go`
+- `go test ./internal/splitter`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 扩展 JavaScript、TypeScript、Python 的 tree-sitter grammar 和节点配置。
+- 细化 C++ 大 namespace / class 的子节点拆分策略。
+- 将 `symbol_name` 和 `symbol_kind` 接入后续关键词/BM25 混合检索。

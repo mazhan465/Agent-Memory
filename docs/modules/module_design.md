@@ -43,14 +43,16 @@
 ### 当前实现
 
 - `LineSplitter`：行级切块，支持 `MaxLines` 和 `OverlapLines`，保留起止行号。
+- `TreeSitterSplitter`：统一 tree-sitter 多语言语法切块器，当前支持 Go 和 C++，解析失败或未配置语言时回退到 `LineSplitter`。
+- `RangeChunker`：将 tree-sitter 语法节点行区间转换为 chunk，并写入 `chunk_kind`、`symbol_name`、`symbol_kind` 和 `parser` 元数据。
 - `MarkdownSplitter`：作为 `document.MarkdownParser` 的适配层，将解析出的标题、摘要和正文节点转换为可向量化 chunk。
 - Markdown chunk 会携带 `document_id`、`section_id`、`heading_path`、`knowledge_kind` 和 `node_kind`。
 - Markdown body chunk 会尽量保持 fenced code block 和表格完整，避免将同一语义单元拆散。
 
 ### 后续扩展
 
-- 继续细化 Go AST splitter，支持函数内部超长块、符号名和声明类型元数据。
-- tree-sitter 多语言 AST splitter。
+- 继续扩展 tree-sitter language config，支持 JavaScript、TypeScript、Python、Rust 等语言。
+- 继续细化 C++ 大 namespace / class 的子节点切分策略。
 - 文档 chunk 后续继续补充 `version`、`keywords` 和 `symbols` 自动抽取。
 - `DocumentChunker` 已接入 CLI 文档知识导入流程，后续继续沉淀为独立 source shard 索引服务。
 

@@ -2,7 +2,12 @@ module github.com/mazhan465/Agent-Memory
 
 go 1.25.4
 
-require github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
+require (
+	github.com/milvus-io/milvus-sdk-go/v2 v2.4.2
+	github.com/tree-sitter/go-tree-sitter v0.25.0
+	github.com/tree-sitter/tree-sitter-cpp v0.23.4
+	github.com/tree-sitter/tree-sitter-go v0.25.0
+)
 
 require (
 	github.com/cockroachdb/errors v1.9.1 // indirect
@@ -14,6 +19,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/milvus-io/milvus-proto/go-api/v2 v2.4.10-0.20240819025435-512e3b98866a // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
