@@ -910,3 +910,40 @@
 - 扩展 JavaScript、TypeScript、Python 的 tree-sitter grammar 和节点配置。
 - 细化 C++ 大 namespace / class 的子节点拆分策略。
 - 将 `symbol_name` 和 `symbol_kind` 接入后续关键词/BM25 混合检索。
+
+## 2026-05-09 本地混合检索基础能力
+
+### 目标
+
+先在本地 JSON VectorStore 中实现混合检索基础能力：在 dense vector 相似度之外，融合查询关键词对正文、路径和 tree-sitter 符号元数据的命中分数，提升函数名、类名、配置项等精确查询的排序稳定性。Milvus hybrid collection 作为后续独立能力继续规划。
+
+### 方案
+
+- `vectorstore.SearchOptions` 新增 `Query`、`SemanticWeight` 和 `KeywordWeight`。
+- CLI 统一搜索和 `internal/searcher` 均将原始 query 传入 `SearchOptions.Query`。
+- `LocalStore.Search` 计算 dense vector 相似度和关键词命中分数，默认权重为 semantic 0.75、keyword 0.25。
+- 关键词分数基于 query token 与文档可搜索文本 token 的命中比例。
+- 文档可搜索文本包含 `content`、`relative_path`、`file_extension`、`language` 和 metadata 值，因此能利用 tree-sitter 写入的 `symbol_name`、`symbol_kind` 等元数据。
+- 无 query 时保持纯向量分数，避免无意义地降低旧调用方分数。
+
+### 模块影响
+
+- `internal/vectorstore/vectorstore.go`：扩展 `SearchOptions`。
+- `internal/vectorstore/local_store.go`：新增关键词分词、关键词评分和混合分数融合。
+- `internal/vectorstore/local_store_test.go`：新增关键词命中提升排序的测试。
+- `internal/searcher/searcher.go`、`cmd/code-context/search.go`：传递原始 query。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力和规划。
+
+### 验证方式
+
+- `gofmt -w internal/vectorstore/vectorstore.go internal/vectorstore/local_store.go internal/vectorstore/local_store_test.go internal/searcher/searcher.go cmd/code-context/search.go`
+- `go test ./internal/vectorstore ./internal/searcher ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 将关键词分数升级为 BM25 或类 BM25 评分。
+- 将 `symbol_name`、`symbol_kind` 等字段设计为显式索引字段。
+- 在 Milvus 中实现 dense + sparse BM25 hybrid collection。

@@ -91,7 +91,7 @@
 - 本地存储支持 source shard，一个 source 一个向量文件。
 - 支持对多个 source shard 聚合检索并全局重排。
 - 支持代码库、长期记忆、工具历史和文档知识库并行检索后统一合并。
-- 支持 Milvus hybrid vector store。
+- 支持 Milvus hybrid vector store，后续将 dense vector 和 BM25 sparse vector 下沉到 Milvus collection。
 - 支持结果重排需要的元数据返回。
 
 ## 6. `internal/contextdoc`

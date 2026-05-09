@@ -45,6 +45,9 @@ type Document struct {
 // SearchOptions 表示向量检索参数。
 type SearchOptions struct {
 	Limit                int
+	Query                string
+	SemanticWeight       float64
+	KeywordWeight        float64
 	ExtensionFilters     []string
 	DomainFilters        []string
 	DocumentFilters      []string

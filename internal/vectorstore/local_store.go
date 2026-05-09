@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"unicode"
 )
 
 const vectorDirName = "vectors"
@@ -82,6 +84,8 @@ func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector [
 
 	extensionSet := makeStringSet(options.ExtensionFilters)
 	metadataFilters := metadataFilterSets(options)
+	queryTokens := tokenizeSearchText(options.Query)
+	semanticWeight, keywordWeight := searchWeights(options)
 	results := make([]SearchResult, 0, len(documents))
 	for _, document := range documents {
 		if len(extensionSet) > 0 {
@@ -92,9 +96,11 @@ func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector [
 		if !matchMetadataFilters(document.Metadata, metadataFilters) {
 			continue
 		}
+		semanticScore := cosineSimilarity(queryVector, document.Vector)
+		keywordScore := keywordMatchScore(queryTokens, document)
 		results = append(results, SearchResult{
 			Document: document,
-			Score:    cosineSimilarity(queryVector, document.Vector),
+			Score:    combinedSearchScore(semanticScore, keywordScore, semanticWeight, keywordWeight),
 		})
 	}
 
@@ -210,6 +216,115 @@ func matchMetadataFilters(metadata map[string]string, filters map[string]map[str
 		}
 	}
 	return true
+}
+
+func searchWeights(options SearchOptions) (float64, float64) {
+	if strings.TrimSpace(options.Query) == "" {
+		return 1, 0
+	}
+	semanticWeight := options.SemanticWeight
+	keywordWeight := options.KeywordWeight
+	if semanticWeight <= 0 && keywordWeight <= 0 {
+		return 0.75, 0.25
+	}
+	if semanticWeight < 0 {
+		semanticWeight = 0
+	}
+	if keywordWeight < 0 {
+		keywordWeight = 0
+	}
+	total := semanticWeight + keywordWeight
+	if total == 0 {
+		return 0.75, 0.25
+	}
+	return semanticWeight / total, keywordWeight / total
+}
+
+func combinedSearchScore(semanticScore float64, keywordScore float64, semanticWeight float64, keywordWeight float64) float64 {
+	if keywordScore == 0 {
+		return semanticScore * semanticWeight
+	}
+	return semanticScore*semanticWeight + keywordScore*keywordWeight
+}
+
+func keywordMatchScore(queryTokens []string, document Document) float64 {
+	if len(queryTokens) == 0 {
+		return 0
+	}
+	documentTokens := tokenizeSearchText(searchableDocumentText(document))
+	if len(documentTokens) == 0 {
+		return 0
+	}
+	documentSet := makeStringSet(documentTokens)
+	matched := 0
+	for _, token := range uniqueStrings(queryTokens) {
+		if _, ok := documentSet[token]; ok {
+			matched++
+		}
+	}
+	if matched == 0 {
+		return 0
+	}
+	return float64(matched) / float64(len(uniqueStrings(queryTokens)))
+}
+
+func searchableDocumentText(document Document) string {
+	parts := []string{
+		document.Content,
+		document.RelativePath,
+		document.FileExtension,
+		document.Language,
+	}
+	for _, value := range document.Metadata {
+		parts = append(parts, value)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func tokenizeSearchText(text string) []string {
+	tokens := make([]string, 0)
+	var builder strings.Builder
+	flush := func() {
+		if builder.Len() == 0 {
+			return
+		}
+		token := strings.ToLower(builder.String())
+		if len([]rune(token)) > 1 {
+			tokens = append(tokens, token)
+		}
+		builder.Reset()
+	}
+	var previous rune
+	for _, current := range text {
+		if !unicode.IsLetter(current) && !unicode.IsDigit(current) {
+			flush()
+			previous = 0
+			continue
+		}
+		if previous != 0 && unicode.IsLower(previous) && unicode.IsUpper(current) {
+			flush()
+		}
+		builder.WriteRune(current)
+		previous = current
+	}
+	flush()
+	return uniqueStrings(tokens)
+}
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func makeStringSet(values []string) map[string]struct{} {

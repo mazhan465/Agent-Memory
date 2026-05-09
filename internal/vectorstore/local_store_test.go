@@ -51,6 +51,49 @@ func TestLocalStoreSearchFiltersByDomain(t *testing.T) {
 	}
 }
 
+func TestLocalStoreSearchUsesKeywordScore(t *testing.T) {
+	ctx := context.Background()
+	store := NewLocalStore(t.TempDir())
+	namespace := "test_namespace"
+	documents := []Document{
+		{
+			ID:           "semantic-only-doc",
+			Namespace:    namespace,
+			Vector:       []float32{1, 0},
+			Content:      "generic repository code",
+			RelativePath: "internal/repository/generic.go",
+		},
+		{
+			ID:           "keyword-doc",
+			Namespace:    namespace,
+			Vector:       []float32{1, 0},
+			Content:      "order service implementation",
+			RelativePath: "internal/order/repository.go",
+			Metadata: map[string]string{
+				"symbol_name": "OrderRepository",
+				"symbol_kind": "struct",
+			},
+		},
+	}
+	if err := store.Put(ctx, namespace, documents); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	results, err := store.Search(ctx, namespace, []float32{1, 0}, SearchOptions{Query: "OrderRepository"})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(results))
+	}
+	if results[0].Document.ID != "keyword-doc" {
+		t.Fatalf("first result ID = %s, want keyword-doc", results[0].Document.ID)
+	}
+	if results[0].Score <= results[1].Score {
+		t.Fatalf("keyword score did not improve ranking: first=%f second=%f", results[0].Score, results[1].Score)
+	}
+}
+
 func TestLocalStoreSearchFiltersByDocumentMetadata(t *testing.T) {
 	ctx := context.Background()
 	store := NewLocalStore(t.TempDir())

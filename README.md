@@ -16,6 +16,7 @@
 - 文档知识 CLI 闭环：`import knowledge` 可导入 Markdown 文档 source，普通 `search` 默认统一检索代码、知识、历史会话、经验和用户偏好等 source，并返回 JSON
 - 哈希向量 Embedder（默认本地可运行，便于验证流程）
 - OpenAI-compatible Embedder（通过环境变量启用真实语义向量）
+- 本地混合检索基础能力：在向量相似度基础上融合查询关键词、路径和符号元数据命中分数
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
 - CLI：`index`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`clear`、`status`
 - 模块化接口：后续可替换为 Ollama Embedder 和 Milvus VectorStore

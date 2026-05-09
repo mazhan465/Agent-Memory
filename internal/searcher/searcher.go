@@ -44,6 +44,9 @@ func (s *Searcher) Search(ctx context.Context, rootPath string, query string, op
 	if err != nil {
 		return nil, err
 	}
+	if options.Query == "" {
+		options.Query = query
+	}
 	if len(options.DomainFilters) == 0 && s.domainResolver != nil {
 		decision, err := s.domainResolver.Resolve(ctx, domain.Input{Query: query})
 		if err != nil {

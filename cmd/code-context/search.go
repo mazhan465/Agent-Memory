@@ -361,7 +361,7 @@ func searchCandidateLimit(limit int) int {
 }
 
 func searchOptions(ctx context.Context, query string, limit int) (vectorstore.SearchOptions, error) {
-	options := vectorstore.SearchOptions{Limit: limit}
+	options := vectorstore.SearchOptions{Limit: limit, Query: query}
 	decision, err := domain.NewDefaultDomainResolver().Resolve(ctx, domain.Input{Query: query})
 	if err != nil {
 		return vectorstore.SearchOptions{}, err
