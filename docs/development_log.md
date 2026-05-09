@@ -947,3 +947,39 @@
 - 将关键词分数升级为 BM25 或类 BM25 评分。
 - 将 `symbol_name`、`symbol_kind` 等字段设计为显式索引字段。
 - 在 Milvus 中实现 dense + sparse BM25 hybrid collection。
+
+## 2026-05-09 Ollama Embedder 接入
+
+### 目标
+
+支持本地 Ollama embedding provider，让项目在不依赖外部 OpenAI-compatible 服务的情况下也能使用真实语义向量。
+
+### 方案
+
+- `internal/config` 增加 `AGENT_MEMORY_OLLAMA_HOST` 和 `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL`。
+- 默认 Ollama host 为 `http://127.0.0.1:11434`，默认模型为 `embeddinggemma`。
+- 新增 `OllamaEmbedder`，调用 Ollama `/api/embed`，支持批量 input。
+- `OllamaEmbedder` 校验返回向量数量、空向量和维度一致性，并记录最近成功维度。
+- `cmd/code-context` 支持 `AGENT_MEMORY_EMBEDDING_PROVIDER=ollama`。
+- README 增加 Ollama embedding 使用示例。
+
+### 模块影响
+
+- `internal/config`：新增 Ollama 配置字段和环境变量。
+- `internal/embed/ollama.go`：新增 Ollama embedding provider。
+- `internal/embed/ollama_test.go`：新增 httptest 测试，覆盖请求体、批量向量顺序、维度记录和错误解析。
+- `cmd/code-context/main.go`：embedder 工厂接入 Ollama。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力。
+
+### 验证方式
+
+- `gofmt -w internal/config/config.go internal/config/config_test.go internal/embed/ollama.go internal/embed/ollama_test.go cmd/code-context/main.go`
+- `go test ./internal/config ./internal/embed ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 后续按需支持 Ollama embedding dimension 预检测或启动前健康检查。
+- VoyageAI、Gemini embedding 暂缓。

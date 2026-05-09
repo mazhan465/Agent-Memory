@@ -1,7 +1,7 @@
 // 文件说明：提供 Agent-Memory 的 CLI 入口。
 // 实现原理：解析 index、search、import、status、clear 子命令，组装配置、索引器、搜索器和向量存储完成操作。
 // 使用方式：执行 code-context index/search/import/status/clear 操作指定上下文源。
-// 注意事项：默认使用本地 HashEmbedder 和 LocalStore，配置环境变量后可切换 OpenAI-compatible Embedder 和 Milvus VectorStore。
+// 注意事项：默认使用本地 HashEmbedder 和 LocalStore，配置环境变量后可切换 OpenAI-compatible/Ollama Embedder 和 Milvus VectorStore。
 // 交互模块：internal/config、internal/scanner、internal/splitter、internal/embed、internal/vectorstore、internal/indexer、internal/snapshot。
 
 // Package main 提供 code-context 命令入口。
@@ -109,6 +109,11 @@ func newEmbedder(cfg config.Config) (embed.Embedder, error) {
 			BaseURL: cfg.OpenAIBaseURL,
 			APIKey:  cfg.OpenAIAPIKey,
 			Model:   cfg.OpenAIEmbeddingModel,
+		})
+	case "ollama":
+		return embed.NewOllamaEmbedder(embed.OllamaOptions{
+			Host:  cfg.OllamaHost,
+			Model: cfg.OllamaEmbeddingModel,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider %q", cfg.EmbeddingProvider)

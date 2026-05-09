@@ -30,7 +30,7 @@ MCP Server 会保留在未来规划中，但当前不作为最高优先级。近
 3. **代码切块质量提升**：优先实现 Go AST splitter，后续再评估 tree-sitter 多语言 splitter；无法解析时回退到行级切块。
 4. **混合检索**：在 dense vector 基础上补充关键词/BM25 类召回信号，当前先完成本地关键词融合，后续规划 Milvus hybrid collection。
 5. **文件包含与排除规则增强**：支持默认规则、环境变量自定义扩展名/忽略规则、根目录 `.gitignore` 和 `.xxxignore`。
-6. **Ollama embedding**：先支持本地 Ollama embedding provider，VoyageAI、Gemini 暂缓。
+6. **Ollama embedding**：已支持本地 Ollama `/api/embed` provider，VoyageAI、Gemini 暂缓。
 7. **代码项目隔离机制**：规划代码索引独立 namespace/collection 策略，避免代码库、知识库和长期记忆互相影响；本地默认仍可使用 namespace，Milvus 后续按 codebase collection 或稳定隔离键演进。
 
 MCP 实装、搜索高级参数、IDE 插件、性能大仓库保护、评测体系、rerank 和上下文压缩进入后续规划，但相关接口设计应避免阻塞未来接入。

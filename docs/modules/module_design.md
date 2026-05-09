@@ -66,10 +66,10 @@
 
 - `HashEmbedder`：本地哈希向量，用于验证完整流程。
 - `OpenAIEmbedder`：通过 OpenAI-compatible embeddings HTTP API 生成真实语义向量。
+- `OllamaEmbedder`：通过 Ollama `/api/embed` 生成本地语义向量。
 
 ### 后续扩展
 
-- Ollama embedding。
 - Gemini / VoyageAI embedding。
 
 ## 5. `internal/vectorstore`

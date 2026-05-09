@@ -16,6 +16,7 @@
 - 文档知识 CLI 闭环：`import knowledge` 可导入 Markdown 文档 source，普通 `search` 默认统一检索代码、知识、历史会话、经验和用户偏好等 source，并返回 JSON
 - 哈希向量 Embedder（默认本地可运行，便于验证流程）
 - OpenAI-compatible Embedder（通过环境变量启用真实语义向量）
+- Ollama Embedder（通过本地 Ollama `/api/embed` 启用本地语义向量）
 - 本地混合检索基础能力：在向量相似度基础上融合查询关键词、路径和符号元数据命中分数
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
 - CLI：`index`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`clear`、`status`
@@ -75,6 +76,12 @@ export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 ./bin/code-context index /path/to/repo
 
+# 使用 Ollama 本地 embedding
+export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
+export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
+export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+./bin/code-context index /path/to/repo
+
 # 使用 Milvus VectorStore
 export AGENT_MEMORY_VECTOR_STORE=milvus
 export AGENT_MEMORY_MILVUS_ADDRESS=localhost:19530
@@ -90,5 +97,4 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 
 - `docs/design/overall_design.md`：整体设计
 - `docs/modules/module_design.md`：模块细化设计
-- `docs/development_rules.md`：开发铁则
-- `docs/development_log.md`：开发过程记录
+- `docs/devel

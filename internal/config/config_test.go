@@ -16,6 +16,8 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envOpenAIBaseURL, "https://example.com/v1")
 	t.Setenv(envOpenAIAPIKey, " test-key ")
 	t.Setenv(envOpenAIEmbeddingModel, "text-embedding-test")
+	t.Setenv(envOllamaHost, " http://localhost:11434 ")
+	t.Setenv(envOllamaEmbeddingModel, "nomic-embed-text")
 	t.Setenv(envMilvusAddress, "127.0.0.1:19530")
 	t.Setenv(envMilvusUsername, " root ")
 	t.Setenv(envMilvusPassword, " password ")
@@ -47,6 +49,12 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	}
 	if cfg.OpenAIEmbeddingModel != "text-embedding-test" {
 		t.Fatalf("OpenAIEmbeddingModel = %s, want text-embedding-test", cfg.OpenAIEmbeddingModel)
+	}
+	if cfg.OllamaHost != "http://localhost:11434" {
+		t.Fatalf("OllamaHost = %s, want http://localhost:11434", cfg.OllamaHost)
+	}
+	if cfg.OllamaEmbeddingModel != "nomic-embed-text" {
+		t.Fatalf("OllamaEmbeddingModel = %s, want nomic-embed-text", cfg.OllamaEmbeddingModel)
 	}
 	if cfg.MilvusAddress != "127.0.0.1:19530" {
 		t.Fatalf("MilvusAddress = %s, want 127.0.0.1:19530", cfg.MilvusAddress)

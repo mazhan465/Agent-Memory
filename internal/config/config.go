@@ -24,6 +24,8 @@ const (
 	defaultSearchLimit          = 8
 	defaultOpenAIBaseURL        = "https://api.openai.com/v1"
 	defaultOpenAIEmbeddingModel = "text-embedding-3-small"
+	defaultOllamaHost           = "http://127.0.0.1:11434"
+	defaultOllamaEmbeddingModel = "embeddinggemma"
 	defaultMilvusAddress        = "localhost:19530"
 	defaultMilvusCollection     = "agent_memory_chunks"
 	envStorageDir               = "AGENT_MEMORY_HOME"
@@ -33,6 +35,8 @@ const (
 	envOpenAIBaseURL            = "AGENT_MEMORY_OPENAI_BASE_URL"
 	envOpenAIAPIKey             = "AGENT_MEMORY_OPENAI_API_KEY"
 	envOpenAIEmbeddingModel     = "AGENT_MEMORY_OPENAI_EMBEDDING_MODEL"
+	envOllamaHost               = "AGENT_MEMORY_OLLAMA_HOST"
+	envOllamaEmbeddingModel     = "AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL"
 	envMilvusAddress            = "AGENT_MEMORY_MILVUS_ADDRESS"
 	envMilvusUsername           = "AGENT_MEMORY_MILVUS_USERNAME"
 	envMilvusPassword           = "AGENT_MEMORY_MILVUS_PASSWORD"
@@ -50,6 +54,8 @@ type Config struct {
 	OpenAIBaseURL        string
 	OpenAIAPIKey         string
 	OpenAIEmbeddingModel string
+	OllamaHost           string
+	OllamaEmbeddingModel string
 	MilvusAddress        string
 	MilvusUsername       string
 	MilvusPassword       string
@@ -80,6 +86,8 @@ func Load() (Config, error) {
 		OpenAIBaseURL:        getString(envOpenAIBaseURL, defaultOpenAIBaseURL),
 		OpenAIAPIKey:         strings.TrimSpace(os.Getenv(envOpenAIAPIKey)),
 		OpenAIEmbeddingModel: getString(envOpenAIEmbeddingModel, defaultOpenAIEmbeddingModel),
+		OllamaHost:           getString(envOllamaHost, defaultOllamaHost),
+		OllamaEmbeddingModel: getString(envOllamaEmbeddingModel, defaultOllamaEmbeddingModel),
 		MilvusAddress:        getString(envMilvusAddress, defaultMilvusAddress),
 		MilvusUsername:       strings.TrimSpace(os.Getenv(envMilvusUsername)),
 		MilvusPassword:       strings.TrimSpace(os.Getenv(envMilvusPassword)),
