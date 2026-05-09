@@ -391,7 +391,7 @@
 ### 当前命令
 
 - `index <path>`
-- `search <path> <query> [limit] [types]`：统一搜索入口，默认返回全部类型 JSON 结果；`types` 可指定 `code`、`knowledge`、`conversation`、`experience`、`preference`、`tool_history`、`fact`
+- `search <path> <query> [limit] [types] [session-id]`：统一搜索入口，默认返回全部类型 JSON 结果；`types` 可指定 `code`、`knowledge`、`conversation`、`experience`、`preference`、`tool_history`、`fact`；未传 `session-id` 时自动生成，返回前按会话历史去重
 - `import knowledge <path> [source-id]`
 - `import memory <type> <json-or-jsonl-path> [source-id]`：导入 `conversation`、`experience`、`preference`、`tool_history`、`fact` 等长期记忆 source
 - `source list [type]`：以 JSON 查看已导入 source

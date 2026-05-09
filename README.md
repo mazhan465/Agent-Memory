@@ -42,11 +42,13 @@ make build
 # 索引当前项目
 ./bin/code-context index /path/to/repo
 
-# 统一搜索代码、知识、历史会话、经验和用户偏好等，返回 JSON
+# 统一搜索代码、知识、历史会话、经验和用户偏好等，返回 JSON；未传 session id 时会自动生成并返回
 ./bin/code-context search /path/to/repo "where is authentication handled"
 
-# 只搜索知识文档
-./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge
+# 只搜索知识文档，并复用 session id 做会话级去重
+./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge session-dev
+# 或使用显式参数
+./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
 
 # 查看状态
 ./bin/code-context status /path/to/repo

@@ -35,11 +35,13 @@ const (
 )
 
 type searchJSONResponse struct {
+	SessionID          string                `json:"session_id"`
 	Query              string                `json:"query"`
 	RootPath           string                `json:"root_path"`
 	Limit              int                   `json:"limit"`
 	SearchTypes        []string              `json:"search_types"`
 	ResultCount        int                   `json:"result_count"`
+	DedupedCount       int                   `json:"deduped_count"`
 	SearchedNamespaces []searchJSONNamespace `json:"searched_namespaces"`
 	Results            []searchJSONResult    `json:"results"`
 }
@@ -53,6 +55,8 @@ type searchJSONNamespace struct {
 
 type searchJSONResult struct {
 	Rank           int                 `json:"rank"`
+	ResultID       string              `json:"result_id"`
+	ContentHash    string              `json:"content_hash"`
 	Category       string              `json:"category"`
 	SourceType     string              `json:"source_type"`
 	SourceID       string              `json:"source_id,omitempty"`
@@ -98,46 +102,93 @@ type searchTypeSelection struct {
 	Labels      []string
 }
 
+type searchRequestOptions struct {
+	RootPath  string
+	Query     string
+	Limit     int
+	Selection searchTypeSelection
+	SessionID string
+}
+
 func (a *app) runSearch(ctx context.Context, args []string) error {
-	rootPath, query, limit, selection, err := a.parseSearchArgs(args)
+	options, err := a.parseSearchArgs(args)
 	if err != nil {
 		return err
 	}
-	response, err := a.searchAll(ctx, rootPath, query, limit, selection)
+	response, err := a.searchAll(ctx, options)
 	if err != nil {
 		return err
 	}
 	return printJSON(response)
 }
 
-func (a *app) parseSearchArgs(args []string) (string, string, int, searchTypeSelection, error) {
-	if len(args) < 2 || len(args) > 4 {
-		return "", "", 0, searchTypeSelection{}, errors.New("usage: code-context search <path> <query> [limit] [types]")
+func (a *app) parseSearchArgs(args []string) (searchRequestOptions, error) {
+	if len(args) < 2 {
+		return searchRequestOptions{}, errors.New("usage: code-context search <path> <query> [limit] [types] [session-id]")
 	}
 	limit := a.config.SearchLimit
 	typeArg := ""
-	if len(args) >= 3 {
-		parsedLimit, err := strconv.Atoi(args[2])
+	sessionID := ""
+	positionals := make([]string, 0, len(args))
+	for index := 0; index < len(args); index++ {
+		arg := args[index]
+		switch {
+		case strings.HasPrefix(arg, "--session-id="):
+			sessionID = strings.TrimPrefix(arg, "--session-id=")
+		case arg == "--session-id" || arg == "--session":
+			if index+1 >= len(args) {
+				return searchRequestOptions{}, errors.New("session id is required")
+			}
+			index++
+			sessionID = args[index]
+		default:
+			positionals = append(positionals, arg)
+		}
+	}
+	if len(positionals) < 2 || len(positionals) > 5 {
+		return searchRequestOptions{}, errors.New("usage: code-context search <path> <query> [limit] [types] [session-id]")
+	}
+	if len(positionals) >= 3 {
+		parsedLimit, err := strconv.Atoi(positionals[2])
 		if err == nil {
 			if parsedLimit <= 0 {
-				return "", "", 0, searchTypeSelection{}, errors.New("limit must be a positive integer")
+				return searchRequestOptions{}, errors.New("limit must be a positive integer")
 			}
 			limit = parsedLimit
 		} else {
-			typeArg = args[2]
+			typeArg = positionals[2]
 		}
 	}
-	if len(args) == 4 {
-		if typeArg != "" {
-			return "", "", 0, searchTypeSelection{}, errors.New("usage: code-context search <path> <query> [limit] [types]")
+	if len(positionals) >= 4 {
+		if typeArg == "" {
+			if isSearchTypeArg(positionals[3]) {
+				typeArg = positionals[3]
+			} else {
+				sessionID = positionals[3]
+			}
+		} else if sessionID == "" {
+			sessionID = positionals[3]
+		} else {
+			return searchRequestOptions{}, errors.New("usage: code-context search <path> <query> [limit] [types] [session-id]")
 		}
-		typeArg = args[3]
+	}
+	if len(positionals) == 5 {
+		if sessionID != "" {
+			return searchRequestOptions{}, errors.New("usage: code-context search <path> <query> [limit] [types] [session-id]")
+		}
+		sessionID = positionals[4]
 	}
 	selection, err := newSearchTypeSelection(typeArg)
 	if err != nil {
-		return "", "", 0, searchTypeSelection{}, err
+		return searchRequestOptions{}, err
 	}
-	return args[0], args[1], limit, selection, nil
+	return searchRequestOptions{
+		RootPath:  positionals[0],
+		Query:     positionals[1],
+		Limit:     limit,
+		Selection: selection,
+		SessionID: sessionID,
+	}, nil
 }
 
 func newSearchTypeSelection(typeArg string) (searchTypeSelection, error) {
@@ -214,6 +265,30 @@ func splitSearchTypeArg(typeArg string) []string {
 	return values
 }
 
+func isSearchTypeArg(typeArg string) bool {
+	values := splitSearchTypeArg(typeArg)
+	if len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if !isSupportedSearchType(value) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSupportedSearchType(value string) bool {
+	switch value {
+	case "all", "code", "knowledge", "knowledge_document", "document", "documents", "docs",
+		"conversation", "history", "chat", "historical_conversation", "experience", "experiences",
+		"preference", "preferences", "user_preference", "user_preferences", "tool", "tool_history", "fact", "facts":
+		return true
+	default:
+		return false
+	}
+}
+
 func sortedKeys(values map[string]struct{}) []string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
@@ -223,29 +298,35 @@ func sortedKeys(values map[string]struct{}) []string {
 	return keys
 }
 
-func (a *app) searchAll(
-	ctx context.Context,
-	rootPath string,
-	query string,
-	limit int,
-	selection searchTypeSelection,
-) (searchJSONResponse, error) {
-	namespace, absolutePath, err := indexer.NamespaceForPath(rootPath)
+func (a *app) searchAll(ctx context.Context, request searchRequestOptions) (searchJSONResponse, error) {
+	namespace, absolutePath, err := indexer.NamespaceForPath(request.RootPath)
 	if err != nil {
 		return searchJSONResponse{}, err
 	}
-	queryVector, err := a.embedder.Embed(ctx, query)
+	queryVector, err := a.embedder.Embed(ctx, request.Query)
 	if err != nil {
 		return searchJSONResponse{}, err
 	}
-	options, err := searchOptions(ctx, query, limit)
+	candidateLimit := searchCandidateLimit(request.Limit)
+	options, err := searchOptions(ctx, request.Query, candidateLimit)
+	if err != nil {
+		return searchJSONResponse{}, err
+	}
+	sessionStore := newSearchSessionStore(a.config.StorageDir)
+	sessionState, err := sessionStore.LoadOrCreate(request.SessionID)
 	if err != nil {
 		return searchJSONResponse{}, err
 	}
 
-	response := searchJSONResponse{Query: query, RootPath: absolutePath, Limit: limit, SearchTypes: selection.Labels}
+	response := searchJSONResponse{
+		SessionID:   sessionState.ID,
+		Query:       request.Query,
+		RootPath:    absolutePath,
+		Limit:       request.Limit,
+		SearchTypes: request.Selection.Labels,
+	}
 	results := make([]categorizedSearchResult, 0)
-	if selection.Code {
+	if request.Selection.Code {
 		results, err = a.appendNamespaceResults(ctx, results, namespace, queryVector, options, searchJSONNamespace{
 			Category:   searchCategoryCode,
 			SourceType: string(contextdoc.SourceTypeCodebase),
@@ -255,19 +336,28 @@ func (a *app) searchAll(
 			return searchJSONResponse{}, err
 		}
 	}
-	if err := a.appendCatalogResults(ctx, &results, queryVector, options, selection, &response); err != nil {
+	if err := a.appendCatalogResults(ctx, &results, queryVector, options, request.Selection, &response); err != nil {
 		return searchJSONResponse{}, err
 	}
 
 	sort.SliceStable(results, func(i int, j int) bool {
 		return results[i].Result.Score > results[j].Result.Score
 	})
-	if limit > 0 && len(results) > limit {
-		results = results[:limit]
-	}
-	response.Results = makeSearchJSONResults(results)
+	filteredResults, dedupedCount := filterSessionResults(&sessionState, results, request.Limit)
+	response.DedupedCount = dedupedCount
+	response.Results = makeSearchJSONResults(filteredResults)
 	response.ResultCount = len(response.Results)
+	if err := sessionStore.Save(sessionState); err != nil {
+		return searchJSONResponse{}, err
+	}
 	return response, nil
+}
+
+func searchCandidateLimit(limit int) int {
+	if limit <= 0 {
+		return limit
+	}
+	return limit * 3
 }
 
 func searchOptions(ctx context.Context, query string, limit int) (vectorstore.SearchOptions, error) {
@@ -359,12 +449,14 @@ func makeSearchJSONResult(rank int, result categorizedSearchResult) searchJSONRe
 	document := result.Result.Document
 	metadata := document.Metadata
 	return searchJSONResult{
-		Rank:       rank,
-		Category:   result.Category,
-		SourceType: result.SourceType,
-		SourceID:   firstNonEmpty(result.SourceID, metadata["source_id"]),
-		Namespace:  result.Namespace,
-		Score:      result.Result.Score,
+		Rank:        rank,
+		ResultID:    searchResultKey(result),
+		ContentHash: searchContentHash(document.Content),
+		Category:    result.Category,
+		SourceType:  result.SourceType,
+		SourceID:    firstNonEmpty(result.SourceID, metadata["source_id"]),
+		Namespace:   result.Namespace,
+		Score:       result.Result.Score,
 		Location: searchJSONLocation{
 			RelativePath:  document.RelativePath,
 			StartLine:     document.StartLine,

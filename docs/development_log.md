@@ -719,3 +719,39 @@
 - 实现 source bundle 导出和导入。
 - 实现 MCP 工具入口。
 - 实现 `SessionContext` 自动上下文包组装。
+
+## 2026-05-09 搜索会话级去重
+
+### 目标
+
+先不做复杂的单次搜索语义去重，只实现会话级去重：同一个 session 中，后续搜索在返回前读取该 session 已返回过的数据，并过滤重复结果。如果用户没有传入 session id，则自动生成一个并在 JSON 响应中返回。
+
+### 方案
+
+- `search` 支持 `session-id` 位置参数和 `--session-id` / `--session-id=<id>` 参数。
+- 搜索响应新增 `session_id` 和 `deduped_count`。
+- 搜索结果新增 `result_id` 和 `content_hash`。
+- 新增本地 `sessions/<session-id>.json` 会话状态文件，记录 `returned_result_keys` 和 `returned_content_hashes`。
+- 会话去重判断：如果 `namespace + document.id` 已返回，或 normalized content hash 已返回，则本次不再返回该结果。
+- 为减少被旧 TopK 结果占满导致无新结果，实际检索候选数扩大为用户 limit 的 3 倍，最终返回仍按用户 limit 截断。
+
+### 模块影响
+
+- `cmd/code-context/search.go`：解析 session id、搜索前加载 session、返回前过滤并保存 session 状态。
+- `cmd/code-context/session.go`：新增会话状态读写、session id 生成、result key 和 content hash 计算。
+- `cmd/code-context/session_test.go`：新增会话去重和参数解析测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新说明。
+
+### 验证方式
+
+- `gofmt -w cmd/code-context/search.go cmd/code-context/session.go cmd/code-context/session_test.go`
+- `go test ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 增加单次搜索内的相邻 chunk 合并和跨 source 去重。
+- 增加 session 清理和过期策略。
+- 将 session 去重沉淀为独立 internal 包，供 MCP Server 和 SessionContext 复用。

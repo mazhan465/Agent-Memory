@@ -202,7 +202,7 @@ func (a *app) runClear(ctx context.Context, args []string) error {
 func printUsage() {
 	fmt.Println(`Usage:
   code-context index <path>
-  code-context search <path> <query> [limit] [types]
+  code-context search <path> <query> [limit] [types] [session-id]
   code-context import knowledge <path> [source-id]
   code-context import memory <type> <json-or-jsonl-path> [source-id]
   code-context source list [type]
@@ -220,7 +220,8 @@ Examples:
   code-context index .
   code-context search . "vector database operations" 5
   code-context search . "project rules" knowledge
-  code-context search . "previous fix" 5 conversation,experience
+  code-context search . "previous fix" 5 conversation,experience session-dev
+  code-context search . "project rules" --session-id=session-dev
   code-context import knowledge ./docs project-docs
   code-context import memory experience ./memories.jsonl team-experience
   code-context source list knowledge`)
