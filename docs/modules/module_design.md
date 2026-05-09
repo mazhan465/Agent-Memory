@@ -137,7 +137,7 @@
 
 ### 职责
 
-编排索引流程。当前以代码库索引为主，后续扩展为通用 `ContextIndexer`。
+编排索引流程。当前以代码库索引为主，已支持基于文件 hash snapshot 的增量索引，并通过 CLI `sync <path|--all>` 显式更新已索引代码库；后续扩展为通用 `ContextIndexer`。
 
 ### 当前交互模块
 

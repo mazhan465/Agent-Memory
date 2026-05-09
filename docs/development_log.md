@@ -1030,3 +1030,39 @@
 
 - 后续 Milvus hybrid collection 也应复用同一套来源类型搜索策略。
 - 可继续扩展为基于查询意图动态调整权重，例如符号型 query 自动提高 keyword 权重。
+
+## 2026-05-09 显式增量同步命令
+
+### 目标
+
+在已有 `index` 自动增量索引的基础上，提供更明确的增量更新入口，便于 Agent、脚本或后续自动同步流程调用，而不是只能通过 `index` 命令间接触发。
+
+### 方案
+
+- `snapshot.Store` 新增 `List`，可列出所有已记录的代码库索引快照。
+- CLI 新增 `sync <path|--all>`：
+  - `sync <path>`：要求路径已有 snapshot，随后调用同一套增量索引流程更新该路径。
+  - `sync --all`：遍历所有非 `indexing` snapshot，逐个执行增量更新。
+- `runIndex` 抽取 `indexPath` 和 `printIndexStats`，避免 `index` 与 `sync` 重复组装 scanner、splitter 和 indexer。
+- `sync` 输出使用 `synced` 前缀，保留 files、chunks、added、modified、removed 和 full_reindex 统计。
+
+### 模块影响
+
+- `internal/snapshot/snapshot.go`：新增 `List`。
+- `internal/snapshot/snapshot_test.go`：新增 List 空目录和排序测试。
+- `cmd/code-context/main.go`：新增 `sync` 命令、`sync --all`、复用索引逻辑和 usage 示例。
+- `cmd/code-context/sync_test.go`：验证未索引路径不能 sync，已索引路径可以 sync。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新说明。
+
+### 验证方式
+
+- `gofmt -w internal/snapshot/snapshot.go internal/snapshot/snapshot_test.go cmd/code-context/main.go cmd/code-context/sync_test.go`
+- `go test ./internal/snapshot ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 后续可以基于 `sync --all` 增加后台定时同步或文件触发同步。
+- 后续 MCP Server 的 `index_codebase` / `get_indexing_status` 可以复用同一套 `indexPath` 和 snapshot 能力。

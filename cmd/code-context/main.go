@@ -63,6 +63,8 @@ func run(ctx context.Context, args []string) error {
 	switch args[0] {
 	case "index":
 		return application.runIndex(ctx, args[1:])
+	case "sync":
+		return application.runSync(ctx, args[1:])
 	case "search":
 		return application.runSearch(ctx, args[1:])
 	case "import":
@@ -140,17 +142,71 @@ func (a *app) runIndex(ctx context.Context, args []string) error {
 	if len(args) != 1 {
 		return errors.New("usage: code-context index <path>")
 	}
+	stats, err := a.indexPath(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	printIndexStats("indexed", stats)
+	return nil
+}
 
+func (a *app) runSync(ctx context.Context, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: code-context sync <path|--all>")
+	}
+	if args[0] == "--all" || args[0] == "all" {
+		return a.runSyncAll(ctx)
+	}
+	namespace, _, err := indexer.NamespaceForPath(args[0])
+	if err != nil {
+		return err
+	}
+	if _, err := a.snapshotStore.Get(namespace); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("path is not indexed: %s", args[0])
+		}
+		return err
+	}
+	stats, err := a.indexPath(ctx, args[0])
+	if err != nil {
+		return err
+	}
+	printIndexStats("synced", stats)
+	return nil
+}
+
+func (a *app) runSyncAll(ctx context.Context) error {
+	infos, err := a.snapshotStore.List()
+	if err != nil {
+		return err
+	}
+	syncedCount := 0
+	for _, info := range infos {
+		if strings.TrimSpace(info.Path) == "" || info.Status == snapshot.StatusIndexing {
+			continue
+		}
+		stats, err := a.indexPath(ctx, info.Path)
+		if err != nil {
+			return err
+		}
+		printIndexStats("synced", stats)
+		syncedCount++
+	}
+	fmt.Printf("synced total=%d\n", syncedCount)
+	return nil
+}
+
+func (a *app) indexPath(ctx context.Context, rootPath string) (indexer.Stats, error) {
 	scannerInstance := scanner.NewWithPatterns(a.config.SupportedExts, a.config.IgnoreNames, a.config.IgnorePatterns)
 	lineSplitter := splitter.NewLineSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines)
 	splitterInstance := splitter.NewTreeSitterSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines, lineSplitter)
 	indexerInstance := indexer.New(scannerInstance, splitterInstance, a.embedder, a.vectorStore, a.snapshotStore)
-	stats, err := indexerInstance.Index(ctx, args[0])
-	if err != nil {
-		return err
-	}
+	return indexerInstance.Index(ctx, rootPath)
+}
 
-	fmt.Printf("indexed path=%s namespace=%s files=%d chunks=%d added=%d modified=%d removed=%d full_reindex=%t\n",
+func printIndexStats(prefix string, stats indexer.Stats) {
+	fmt.Printf("%s path=%s namespace=%s files=%d chunks=%d added=%d modified=%d removed=%d full_reindex=%t\n",
+		prefix,
 		stats.Path,
 		stats.Namespace,
 		stats.IndexedFiles,
@@ -160,7 +216,6 @@ func (a *app) runIndex(ctx context.Context, args []string) error {
 		stats.RemovedFiles,
 		stats.FullReindex,
 	)
-	return nil
 }
 
 func (a *app) runStatus(args []string) error {
@@ -217,6 +272,7 @@ func (a *app) runClear(ctx context.Context, args []string) error {
 func printUsage() {
 	fmt.Println(`Usage:
   code-context index <path>
+  code-context sync <path|--all>
   code-context search <path> <query> [limit] [types] [session-id]
   code-context import knowledge <path> [source-id]
   code-context import memory <type> <json-or-jsonl-path> [source-id]
@@ -233,6 +289,8 @@ Memory import types:
 
 Examples:
   code-context index .
+  code-context sync .
+  code-context sync --all
   code-context search . "vector database operations" 5
   code-context search . "project rules" knowledge
   code-context search . "previous fix" 5 conversation,experience session-dev

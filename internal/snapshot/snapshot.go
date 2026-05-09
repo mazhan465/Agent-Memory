@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 )
 
@@ -83,6 +84,39 @@ func (s *Store) Delete(namespace string) error {
 		return nil
 	}
 	return err
+}
+
+// List 返回所有代码库索引快照。
+func (s *Store) List() ([]Info, error) {
+	entries, err := os.ReadDir(s.snapshotDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Info{}, nil
+		}
+		return nil, err
+	}
+	items := make([]Info, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.snapshotDir(), entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var info Info
+		if err := json.Unmarshal(data, &info); err != nil {
+			return nil, err
+		}
+		items = append(items, info)
+	}
+	sort.SliceStable(items, func(i int, j int) bool {
+		if items[i].Path != items[j].Path {
+			return items[i].Path < items[j].Path
+		}
+		return items[i].Namespace < items[j].Namespace
+	})
+	return items, nil
 }
 
 func (s *Store) snapshotDir() string {

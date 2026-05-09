@@ -19,7 +19,7 @@
 - Ollama Embedder（通过本地 Ollama `/api/embed` 启用本地语义向量）
 - 本地混合检索基础能力：在向量相似度基础上融合查询关键词、路径和符号元数据命中分数，并按代码、知识库、历史会话、用户偏好等来源类型配置权重
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
-- CLI：`index`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`clear`、`status`
+- CLI：`index`、`sync`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`clear`、`status`
 - 模块化接口：后续可替换为 Ollama Embedder 和 Milvus VectorStore
 - 长期记忆设计：后续支持历史会话、工具记录、用户偏好和会话启动上下文构建
 - 文档知识库设计：后续支持书籍、超长说明文档、技术文档、SDK 文档和项目规范入库
@@ -44,6 +44,10 @@ make build
 
 # 索引当前项目；会自动读取根目录 .gitignore / .contextignore 等 .xxxignore 文件
 ./bin/code-context index /path/to/repo
+
+# 对已索引项目执行显式增量更新；也可以同步所有已记录快照
+./bin/code-context sync /path/to/repo
+./bin/code-context sync --all
 
 # 追加自定义扩展名和忽略规则
 export AGENT_MEMORY_CUSTOM_EXTENSIONS=.vue,.svelte,.astro
@@ -97,4 +101,4 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 
 - `docs/design/overall_design.md`：整体设计
 - `docs/modules/module_design.md`：模块细化设计
-- `docs/devel
+- `d

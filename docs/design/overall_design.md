@@ -26,7 +26,7 @@
 MCP Server 会保留在未来规划中，但当前不作为最高优先级。近期按照以下顺序逐步补齐 `claude-context` 已验证的代码检索工程化能力：
 
 1. **索引状态和可搜索性增强**：在非 MCP 场景先完善索引状态、进度记录和部分可搜索基础能力，为后续异步 MCP 复用。
-2. **增量索引与自动同步基础**：基于文件 hash snapshot 识别新增、删除和修改文件，避免每次全量重建。
+2. **增量索引与自动同步基础**：基于文件 hash snapshot 识别新增、删除和修改文件，避免每次全量重建，并提供 `sync <path|--all>` 显式增量更新入口。
 3. **代码切块质量提升**：优先实现 Go AST splitter，后续再评估 tree-sitter 多语言 splitter；无法解析时回退到行级切块。
 4. **混合检索**：在 dense vector 基础上补充关键词/BM25 类召回信号，并按 code、knowledge、conversation、preference 等来源类型配置 semantic/keyword 权重，后续规划 Milvus hybrid collection。
 5. **文件包含与排除规则增强**：支持默认规则、环境变量自定义扩展名/忽略规则、根目录 `.gitignore` 和 `.xxxignore`。
