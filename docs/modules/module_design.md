@@ -49,7 +49,7 @@
 
 ### 后续扩展
 
-- Go AST splitter。
+- 继续细化 Go AST splitter，支持函数内部超长块、符号名和声明类型元数据。
 - tree-sitter 多语言 AST splitter。
 - 文档 chunk 后续继续补充 `version`、`keywords` 和 `symbols` 自动抽取。
 - `DocumentChunker` 已接入 CLI 文档知识导入流程，后续继续沉淀为独立 source shard 索引服务。

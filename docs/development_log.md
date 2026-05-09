@@ -834,3 +834,38 @@
 - 继续补充索引状态和自动同步入口，例如独立 `sync` 命令或后台同步服务。
 - 实现 Go AST splitter，提升代码 chunk 的语义完整度。
 - 规划代码 source 的 collection / namespace 隔离策略，避免长期单 collection 在大规模代码索引场景下扩展受限。
+
+## 2026-05-09 Go AST 感知代码切块基础能力
+
+### 目标
+
+提升 Go 代码切块质量，避免完全依赖固定行数切块导致函数、类型声明等语义单元被切断。当前先实现 Go AST splitter，tree-sitter 多语言 splitter 后续再规划。
+
+### 方案
+
+- 新增 `GoASTSplitter`，使用 `go/parser` 解析 Go 文件。
+- Go 文件按 package header 和顶层声明切分 chunk，函数、方法、类型、变量、常量和 import 声明保留完整起止行。
+- 解析失败、空文件、无声明或非 Go 语言时回退到 `LineSplitter`。
+- 超过 `MaxLines` 的单个声明继续按行级窗口切分，保留 `OverlapLines`。
+- CLI `index` 默认使用 `GoASTSplitter`，其他语言仍由行级 fallback 处理。
+
+### 模块影响
+
+- `internal/splitter/go_ast.go`：新增 Go AST 感知切块器。
+- `internal/splitter/go_ast_test.go`：验证顶层声明切分和解析失败回退。
+- `cmd/code-context/main.go`：索引流程改为 Go AST splitter + LineSplitter fallback。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力。
+
+### 验证方式
+
+- `gofmt -w internal/splitter/go_ast.go internal/splitter/go_ast_test.go cmd/code-context/main.go`
+- `go test ./internal/splitter ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 为 Go AST chunk 增加符号名、声明类型等元数据。
+- 继续规划 tree-sitter 多语言 AST splitter。
+- 开始设计本地关键词/BM25 召回和 Milvus hybrid collection。

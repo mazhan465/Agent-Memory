@@ -137,7 +137,8 @@ func (a *app) runIndex(ctx context.Context, args []string) error {
 	}
 
 	scannerInstance := scanner.NewWithPatterns(a.config.SupportedExts, a.config.IgnoreNames, a.config.IgnorePatterns)
-	splitterInstance := splitter.NewLineSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines)
+	lineSplitter := splitter.NewLineSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines)
+	splitterInstance := splitter.NewGoASTSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines, lineSplitter)
 	indexerInstance := indexer.New(scannerInstance, splitterInstance, a.embedder, a.vectorStore, a.snapshotStore)
 	stats, err := indexerInstance.Index(ctx, args[0])
 	if err != nil {

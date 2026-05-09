@@ -122,7 +122,8 @@ IndexCodebase(path)
   -> 计算当前文件 hash
   -> 如果没有可用旧快照，则全量切块、embedding 并覆盖写入 ContextStore
   -> 如果存在旧快照，则对比新增、修改和删除文件
-  -> 只对新增和修改文件切分 code chunk 并批量生成 embedding
+  -> 只对新增和修改文件切分 code chunk，Go 文件优先按 AST 顶层声明切分，其他情况回退行级切块
+  -> 批量生成 embedding
   -> 通过 VectorStore.ReplaceFiles 删除旧文件 chunk 并写入新 chunk
   -> 保存新的 snapshot 和 file_hashes
 ```
