@@ -58,13 +58,17 @@ func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector [
 		return nil, err
 	}
 
-	extensionSet := makeExtensionSet(options.ExtensionFilters)
+	extensionSet := makeStringSet(options.ExtensionFilters)
+	metadataFilters := metadataFilterSets(options)
 	results := make([]SearchResult, 0, len(documents))
 	for _, document := range documents {
 		if len(extensionSet) > 0 {
 			if _, ok := extensionSet[document.FileExtension]; !ok {
 				continue
 			}
+		}
+		if !matchMetadataFilters(document.Metadata, metadataFilters) {
+			continue
 		}
 		results = append(results, SearchResult{
 			Document: document,
@@ -133,11 +137,36 @@ func (s *LocalStore) namespacePath(namespace string) string {
 	return filepath.Join(s.vectorDir(), namespace+".json")
 }
 
-func makeExtensionSet(extensions []string) map[string]struct{} {
-	result := make(map[string]struct{}, len(extensions))
-	for _, extension := range extensions {
-		if extension != "" {
-			result[extension] = struct{}{}
+func metadataFilterSets(options SearchOptions) map[string]map[string]struct{} {
+	filters := map[string]map[string]struct{}{
+		MetadataDomainPath:    makeStringSet(options.DomainFilters),
+		MetadataDocumentID:    makeStringSet(options.DocumentFilters),
+		MetadataSectionID:     makeStringSet(options.SectionFilters),
+		MetadataHeadingPath:   makeStringSet(options.HeadingFilters),
+		MetadataKnowledgeKind: makeStringSet(options.KnowledgeKindFilters),
+		MetadataNodeKind:      makeStringSet(options.NodeKindFilters),
+		MetadataVersion:       makeStringSet(options.VersionFilters),
+	}
+	return filters
+}
+
+func matchMetadataFilters(metadata map[string]string, filters map[string]map[string]struct{}) bool {
+	for key, allowedValues := range filters {
+		if len(allowedValues) == 0 {
+			continue
+		}
+		if _, ok := allowedValues[metadata[key]]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func makeStringSet(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value != "" {
+			result[value] = struct{}{}
 		}
 	}
 	return result

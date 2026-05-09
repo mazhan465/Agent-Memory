@@ -10,20 +10,27 @@ package searcher
 import (
 	"context"
 
-	"github.com/aaq/go-code-context/internal/embed"
-	"github.com/aaq/go-code-context/internal/indexer"
-	"github.com/aaq/go-code-context/internal/vectorstore"
+	"github.com/mazhan465/Agent-Memory/internal/domain"
+	"github.com/mazhan465/Agent-Memory/internal/embed"
+	"github.com/mazhan465/Agent-Memory/internal/indexer"
+	"github.com/mazhan465/Agent-Memory/internal/vectorstore"
 )
 
 // Searcher 负责执行语义检索。
 type Searcher struct {
-	embedder    embed.Embedder
-	vectorStore vectorstore.VectorStore
+	embedder       embed.Embedder
+	vectorStore    vectorstore.VectorStore
+	domainResolver *domain.DomainResolver
 }
 
 // New 创建搜索器。
 func New(embedder embed.Embedder, vectorStore vectorstore.VectorStore) *Searcher {
-	return &Searcher{embedder: embedder, vectorStore: vectorStore}
+	return NewWithDomainResolver(embedder, vectorStore, domain.NewDefaultDomainResolver())
+}
+
+// NewWithDomainResolver 创建带自定义领域解析器的搜索器。
+func NewWithDomainResolver(embedder embed.Embedder, vectorStore vectorstore.VectorStore, domainResolver *domain.DomainResolver) *Searcher {
+	return &Searcher{embedder: embedder, vectorStore: vectorStore, domainResolver: domainResolver}
 }
 
 // Search 在指定代码库索引中搜索相关代码片段。
@@ -36,6 +43,18 @@ func (s *Searcher) Search(ctx context.Context, rootPath string, query string, op
 	queryVector, err := s.embedder.Embed(ctx, query)
 	if err != nil {
 		return nil, err
+	}
+	if len(options.DomainFilters) == 0 && s.domainResolver != nil {
+		decision, err := s.domainResolver.Resolve(ctx, domain.Input{Query: query})
+		if err != nil {
+			return nil, err
+		}
+		if decision.Domain != "" {
+			options.DomainFilters = append(options.DomainFilters, string(decision.Domain))
+			if decision.ParentDomain != "" {
+				options.DomainFilters = append(options.DomainFilters, string(decision.ParentDomain))
+			}
+		}
 	}
 	return s.vectorStore.Search(ctx, namespace, queryVector, options)
 }

@@ -1,7 +1,7 @@
-// 文件说明：定义代码切块接口并提供行级切块实现。
+// 文件说明：定义通用切块接口并提供行级切块实现。
 // 实现原理：按固定最大行数切分文件内容，并使用重叠行保留上下文连续性。
-// 使用方式：索引器将扫描到的文件内容传入 Splitter.Split，得到带行号的 Chunk 列表。
-// 注意事项：当前为 MVP 通用切块方案，后续可替换为 Go AST 或 tree-sitter 切块实现。
+// 使用方式：索引器将扫描到的文件内容传入 Splitter.Split，得到带行号和可选元数据的 Chunk 列表。
+// 注意事项：当前行级实现适合 MVP 通用切块，文档知识库可使用 MarkdownSplitter 保留章节元数据。
 // 交互模块：internal/indexer、internal/scanner、internal/embed。
 
 // Package splitter 提供代码文本切块能力。
@@ -11,13 +11,14 @@ import "strings"
 
 const defaultLanguage = "text"
 
-// Chunk 表示一个可向量化的代码片段。
+// Chunk 表示一个可向量化的内容片段。
 type Chunk struct {
 	Content   string
 	FilePath  string
 	StartLine int
 	EndLine   int
 	Language  string
+	Metadata  map[string]string
 }
 
 // Splitter 定义代码切块接口。
@@ -65,10 +66,7 @@ func (s *LineSplitter) Split(filePath string, content []byte, language string) [
 
 	chunks := make([]Chunk, 0, len(lines)/step+1)
 	for start := 0; start < len(lines); start += step {
-		end := start + s.MaxLines
-		if end > len(lines) {
-			end = len(lines)
-		}
+		end := min(start+s.MaxLines, len(lines))
 
 		chunkText := strings.Join(lines[start:end], "\n")
 		if strings.TrimSpace(chunkText) != "" {

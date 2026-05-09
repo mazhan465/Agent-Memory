@@ -4,10 +4,29 @@
 // 注意事项：接口中的 namespace 用于隔离不同代码库索引，不等同于权限隔离。
 // 交互模块：internal/indexer、internal/searcher、internal/snapshot。
 
-// Package vectorstore 提供向量存储抽象和本地实现。
+// Package vectorstore 提供向量存储抽象、本地实现和 Milvus 实现。
 package vectorstore
 
 import "context"
+
+const (
+	// MetadataDomainPath 表示文档所属动态领域路径。
+	MetadataDomainPath = "domain_path"
+	// MetadataExperienceKind 表示文档经验类型。
+	MetadataExperienceKind = "experience_kind"
+	// MetadataDocumentID 表示文档知识库中的文档 ID。
+	MetadataDocumentID = "document_id"
+	// MetadataSectionID 表示文档知识库中的章节 ID。
+	MetadataSectionID = "section_id"
+	// MetadataHeadingPath 表示文档知识库中的标题路径。
+	MetadataHeadingPath = "heading_path"
+	// MetadataKnowledgeKind 表示文档知识类型。
+	MetadataKnowledgeKind = "knowledge_kind"
+	// MetadataNodeKind 表示文档解析节点类型。
+	MetadataNodeKind = "node_kind"
+	// MetadataVersion 表示文档或来源版本。
+	MetadataVersion = "version"
+)
 
 // Document 表示一条已向量化的代码片段。
 type Document struct {
@@ -25,8 +44,15 @@ type Document struct {
 
 // SearchOptions 表示向量检索参数。
 type SearchOptions struct {
-	Limit            int
-	ExtensionFilters []string
+	Limit                int
+	ExtensionFilters     []string
+	DomainFilters        []string
+	DocumentFilters      []string
+	SectionFilters       []string
+	HeadingFilters       []string
+	KnowledgeKindFilters []string
+	NodeKindFilters      []string
+	VersionFilters       []string
 }
 
 // SearchResult 表示向量检索结果。

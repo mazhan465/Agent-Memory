@@ -10,14 +10,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
+	"strconv"
 
-	"github.com/aaq/go-code-context/internal/embed"
-	"github.com/aaq/go-code-context/internal/scanner"
-	"github.com/aaq/go-code-context/internal/snapshot"
-	"github.com/aaq/go-code-context/internal/splitter"
-	"github.com/aaq/go-code-context/internal/vectorstore"
+	"github.com/mazhan465/Agent-Memory/internal/domain"
+	"github.com/mazhan465/Agent-Memory/internal/embed"
+	"github.com/mazhan465/Agent-Memory/internal/scanner"
+	"github.com/mazhan465/Agent-Memory/internal/snapshot"
+	"github.com/mazhan465/Agent-Memory/internal/splitter"
+	"github.com/mazhan465/Agent-Memory/internal/vectorstore"
 )
 
 // Stats 表示索引结果统计。
@@ -75,6 +78,7 @@ func (i *Indexer) Index(ctx context.Context, rootPath string) (Stats, error) {
 		return Stats{}, err
 	}
 
+	domainResolver := domain.NewDefaultDomainResolver()
 	documents := make([]vectorstore.Document, 0)
 	indexedFiles := 0
 	for _, file := range files {
@@ -99,6 +103,27 @@ func (i *Indexer) Index(ctx context.Context, rootPath string) (Stats, error) {
 		}
 
 		for chunkIndex, chunk := range chunks {
+			metadata := map[string]string{
+				"absolute_path": filepath.ToSlash(file.AbsolutePath),
+			}
+			maps.Copy(metadata, chunk.Metadata)
+			decision, err := domainResolver.Resolve(ctx, domain.Input{
+				Query:          chunk.Content,
+				FileExtensions: []string{file.Extension},
+				Metadata: map[string]string{
+					"relative_path": file.RelativePath,
+				},
+			})
+			if err != nil {
+				i.saveFailure(namespace, absolutePath, err)
+				return Stats{}, err
+			}
+			if decision.Domain != "" {
+				metadata[vectorstore.MetadataDomainPath] = string(decision.Domain)
+			}
+			if decision.ExperienceKind != "" {
+				metadata[vectorstore.MetadataExperienceKind] = string(decision.ExperienceKind)
+			}
 			documents = append(documents, vectorstore.Document{
 				ID:            chunkID(file.RelativePath, chunk.StartLine, chunk.EndLine, chunk.Content),
 				Namespace:     namespace,
@@ -109,9 +134,7 @@ func (i *Indexer) Index(ctx context.Context, rootPath string) (Stats, error) {
 				EndLine:       chunk.EndLine,
 				FileExtension: file.Extension,
 				Language:      chunk.Language,
-				Metadata: map[string]string{
-					"absolute_path": filepath.ToSlash(file.AbsolutePath),
-				},
+				Metadata:      metadata,
 			})
 		}
 		indexedFiles++
@@ -151,7 +174,8 @@ func (i *Indexer) saveFailure(namespace string, absolutePath string, err error) 
 }
 
 func chunkID(relativePath string, startLine int, endLine int, content string) string {
-	hash := sha256.Sum256([]byte(relativePath + content))
+	key := relativePath + ":" + strconv.Itoa(startLine) + ":" + strconv.Itoa(endLine) + ":" + content
+	hash := sha256.Sum256([]byte(key))
 	return "chunk_" + hex.EncodeToString(hash[:])[:16]
 }
 

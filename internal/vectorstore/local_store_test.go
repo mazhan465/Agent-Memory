@@ -1,0 +1,106 @@
+// 文件说明：测试本地向量存储过滤能力。
+// 实现原理：写入临时 JSON 向量文件，验证领域和文档知识元数据过滤。
+// 使用方式：执行 go test ./internal/vectorstore 或 go test ./...。
+// 注意事项：测试不依赖外部 Milvus 服务。
+// 交互模块：internal/vectorstore。
+
+package vectorstore
+
+import (
+	"context"
+	"testing"
+)
+
+func TestLocalStoreSearchFiltersByDomain(t *testing.T) {
+	ctx := context.Background()
+	store := NewLocalStore(t.TempDir())
+	namespace := "test_namespace"
+	documents := []Document{
+		{
+			ID:        "go-doc",
+			Namespace: namespace,
+			Vector:    []float32{1, 0},
+			Content:   "go goroutine channel",
+			Metadata: map[string]string{
+				MetadataDomainPath: "programming/go",
+			},
+		},
+		{
+			ID:        "milvus-doc",
+			Namespace: namespace,
+			Vector:    []float32{1, 0},
+			Content:   "milvus collection search",
+			Metadata: map[string]string{
+				MetadataDomainPath: "database/milvus",
+			},
+		},
+	}
+	if err := store.Put(ctx, namespace, documents); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	results, err := store.Search(ctx, namespace, []float32{1, 0}, SearchOptions{DomainFilters: []string{"database/milvus"}})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Document.ID != "milvus-doc" {
+		t.Fatalf("result ID = %s, want milvus-doc", results[0].Document.ID)
+	}
+}
+
+func TestLocalStoreSearchFiltersByDocumentMetadata(t *testing.T) {
+	ctx := context.Background()
+	store := NewLocalStore(t.TempDir())
+	namespace := "test_namespace"
+	documents := []Document{
+		{
+			ID:        "summary-doc",
+			Namespace: namespace,
+			Vector:    []float32{1, 0},
+			Content:   "summary",
+			Metadata: map[string]string{
+				MetadataDocumentID:    "go-guide",
+				MetadataKnowledgeKind: "concept",
+				MetadataNodeKind:      "summary",
+			},
+		},
+		{
+			ID:        "api-doc",
+			Namespace: namespace,
+			Vector:    []float32{1, 0},
+			Content:   "api usage",
+			Metadata: map[string]string{
+				MetadataDocumentID:    "go-guide",
+				MetadataSectionID:     "guide/api",
+				MetadataHeadingPath:   "Guide > API",
+				MetadataKnowledgeKind: "api",
+				MetadataNodeKind:      "body",
+				MetadataVersion:       "v1",
+			},
+		},
+	}
+	if err := store.Put(ctx, namespace, documents); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	results, err := store.Search(ctx, namespace, []float32{1, 0}, SearchOptions{
+		DocumentFilters:      []string{"go-guide"},
+		SectionFilters:       []string{"guide/api"},
+		HeadingFilters:       []string{"Guide > API"},
+		KnowledgeKindFilters: []string{"api"},
+		NodeKindFilters:      []string{"body"},
+		VersionFilters:       []string{"v1"},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("len(results) = %d, want 1", len(results))
+	}
+	if results[0].Document.ID != "api-doc" {
+		t.Fatalf("result ID = %s, want api-doc", results[0].Document.ID)
+	}
+}

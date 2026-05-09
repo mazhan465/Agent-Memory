@@ -15,24 +15,48 @@ import (
 )
 
 const (
-	defaultStorageDir     = ".go-code-context"
-	defaultEmbeddingDim   = 256
-	defaultMaxChunkLines  = 120
-	defaultChunkOverlap   = 20
-	defaultSearchLimit    = 8
-	envStorageDir         = "GO_CODE_CONTEXT_HOME"
-	envEmbeddingDimension = "GO_CODE_CONTEXT_EMBEDDING_DIM"
+	defaultStorageDir           = ".agent-memory"
+	defaultEmbeddingProvider    = "hash"
+	defaultVectorStoreProvider  = "local"
+	defaultEmbeddingDim         = 256
+	defaultMaxChunkLines        = 120
+	defaultChunkOverlap         = 20
+	defaultSearchLimit          = 8
+	defaultOpenAIBaseURL        = "https://api.openai.com/v1"
+	defaultOpenAIEmbeddingModel = "text-embedding-3-small"
+	defaultMilvusAddress        = "localhost:19530"
+	defaultMilvusCollection     = "agent_memory_chunks"
+	envStorageDir               = "AGENT_MEMORY_HOME"
+	envEmbeddingProvider        = "AGENT_MEMORY_EMBEDDING_PROVIDER"
+	envVectorStoreProvider      = "AGENT_MEMORY_VECTOR_STORE"
+	envEmbeddingDimension       = "AGENT_MEMORY_EMBEDDING_DIM"
+	envOpenAIBaseURL            = "AGENT_MEMORY_OPENAI_BASE_URL"
+	envOpenAIAPIKey             = "AGENT_MEMORY_OPENAI_API_KEY"
+	envOpenAIEmbeddingModel     = "AGENT_MEMORY_OPENAI_EMBEDDING_MODEL"
+	envMilvusAddress            = "AGENT_MEMORY_MILVUS_ADDRESS"
+	envMilvusUsername           = "AGENT_MEMORY_MILVUS_USERNAME"
+	envMilvusPassword           = "AGENT_MEMORY_MILVUS_PASSWORD"
+	envMilvusCollection         = "AGENT_MEMORY_MILVUS_COLLECTION"
 )
 
-// Config 表示 go-code-context 的运行配置。
+// Config 表示 Agent-Memory 的运行配置。
 type Config struct {
-	StorageDir         string
-	EmbeddingDimension int
-	MaxChunkLines      int
-	ChunkOverlapLines  int
-	SearchLimit        int
-	SupportedExts      []string
-	IgnoreNames        []string
+	StorageDir           string
+	EmbeddingProvider    string
+	VectorStoreProvider  string
+	EmbeddingDimension   int
+	OpenAIBaseURL        string
+	OpenAIAPIKey         string
+	OpenAIEmbeddingModel string
+	MilvusAddress        string
+	MilvusUsername       string
+	MilvusPassword       string
+	MilvusCollection     string
+	MaxChunkLines        int
+	ChunkOverlapLines    int
+	SearchLimit          int
+	SupportedExts        []string
+	IgnoreNames          []string
 }
 
 // Load 从环境变量和默认值加载配置。
@@ -46,18 +70,27 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		StorageDir:         storageDir,
-		EmbeddingDimension: getPositiveInt(envEmbeddingDimension, defaultEmbeddingDim),
-		MaxChunkLines:      defaultMaxChunkLines,
-		ChunkOverlapLines:  defaultChunkOverlap,
-		SearchLimit:        defaultSearchLimit,
+		StorageDir:           storageDir,
+		EmbeddingProvider:    getString(envEmbeddingProvider, defaultEmbeddingProvider),
+		VectorStoreProvider:  getString(envVectorStoreProvider, defaultVectorStoreProvider),
+		EmbeddingDimension:   getPositiveInt(envEmbeddingDimension, defaultEmbeddingDim),
+		OpenAIBaseURL:        getString(envOpenAIBaseURL, defaultOpenAIBaseURL),
+		OpenAIAPIKey:         strings.TrimSpace(os.Getenv(envOpenAIAPIKey)),
+		OpenAIEmbeddingModel: getString(envOpenAIEmbeddingModel, defaultOpenAIEmbeddingModel),
+		MilvusAddress:        getString(envMilvusAddress, defaultMilvusAddress),
+		MilvusUsername:       strings.TrimSpace(os.Getenv(envMilvusUsername)),
+		MilvusPassword:       strings.TrimSpace(os.Getenv(envMilvusPassword)),
+		MilvusCollection:     getString(envMilvusCollection, defaultMilvusCollection),
+		MaxChunkLines:        defaultMaxChunkLines,
+		ChunkOverlapLines:    defaultChunkOverlap,
+		SearchLimit:          defaultSearchLimit,
 		SupportedExts: []string{
 			".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
 			".cs", ".rs", ".php", ".rb", ".swift", ".kt", ".scala", ".md", ".markdown",
 		},
 		IgnoreNames: []string{
 			".git", ".svn", ".hg", ".idea", ".vscode", "node_modules", "dist", "build", "out", "target",
-			"coverage", "__pycache__", ".pytest_cache", ".cache", "tmp", "temp", "logs", ".go-code-context",
+			"coverage", "__pycache__", ".pytest_cache", ".cache", "tmp", "temp", "logs", ".agent-memory",
 		},
 	}, nil
 }
@@ -81,4 +114,12 @@ func getPositiveInt(name string, fallback int) int {
 		return fallback
 	}
 	return parsedValue
+}
+
+func getString(name string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
