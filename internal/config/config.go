@@ -37,6 +37,8 @@ const (
 	envMilvusUsername           = "AGENT_MEMORY_MILVUS_USERNAME"
 	envMilvusPassword           = "AGENT_MEMORY_MILVUS_PASSWORD"
 	envMilvusCollection         = "AGENT_MEMORY_MILVUS_COLLECTION"
+	envCustomExtensions         = "AGENT_MEMORY_CUSTOM_EXTENSIONS"
+	envCustomIgnorePatterns     = "AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS"
 )
 
 // Config 表示 Agent-Memory 的运行配置。
@@ -57,6 +59,7 @@ type Config struct {
 	SearchLimit          int
 	SupportedExts        []string
 	IgnoreNames          []string
+	IgnorePatterns       []string
 }
 
 // Load 从环境变量和默认值加载配置。
@@ -84,14 +87,22 @@ func Load() (Config, error) {
 		MaxChunkLines:        defaultMaxChunkLines,
 		ChunkOverlapLines:    defaultChunkOverlap,
 		SearchLimit:          defaultSearchLimit,
-		SupportedExts: []string{
+		SupportedExts: mergeCSVValues([]string{
 			".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
-			".cs", ".rs", ".php", ".rb", ".swift", ".kt", ".scala", ".md", ".markdown",
-		},
+			".cs", ".rs", ".php", ".rb", ".swift", ".kt", ".scala", ".m", ".mm", ".dart", ".sol",
+			".md", ".markdown", ".ipynb",
+		}, os.Getenv(envCustomExtensions), true),
 		IgnoreNames: []string{
 			".git", ".svn", ".hg", ".idea", ".vscode", "node_modules", "dist", "build", "out", "target",
 			"coverage", "__pycache__", ".pytest_cache", ".cache", "tmp", "temp", "logs", ".agent-memory",
 		},
+		IgnorePatterns: mergeCSVValues([]string{
+			"node_modules/**", "dist/**", "build/**", "out/**", "target/**", "coverage/**", ".nyc_output/**",
+			".git/**", ".svn/**", ".hg/**", ".idea/**", ".vscode/**", "__pycache__/**", ".pytest_cache/**",
+			".cache/**", "tmp/**", "temp/**", "logs/**", "*.log", ".env", ".env.*", "*.local",
+			"*.min.js", "*.min.css", "*.min.map", "*.bundle.js", "*.bundle.css", "*.chunk.js", "*.vendor.js",
+			"*.polyfills.js", "*.runtime.js", "*.map", ".agent-memory/**",
+		}, os.Getenv(envCustomIgnorePatterns), false),
 	}, nil
 }
 
@@ -122,4 +133,30 @@ func getString(name string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func mergeCSVValues(defaults []string, csvValue string, normalizeExtension bool) []string {
+	seen := make(map[string]struct{}, len(defaults))
+	values := make([]string, 0, len(defaults))
+	appendValue := func(value string) {
+		cleanValue := strings.TrimSpace(value)
+		if cleanValue == "" {
+			return
+		}
+		if normalizeExtension && !strings.HasPrefix(cleanValue, ".") {
+			cleanValue = "." + cleanValue
+		}
+		if _, ok := seen[cleanValue]; ok {
+			return
+		}
+		seen[cleanValue] = struct{}{}
+		values = append(values, cleanValue)
+	}
+	for _, value := range defaults {
+		appendValue(value)
+	}
+	for value := range strings.SplitSeq(csvValue, ",") {
+		appendValue(value)
+	}
+	return values
 }

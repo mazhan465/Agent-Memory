@@ -28,8 +28,11 @@
 ### 规则
 
 - 默认忽略 `.git`、`node_modules`、`dist`、`build`、`.env`、日志和缓存目录。
-- 只扫描受支持的扩展名。
-- 返回绝对路径和相对路径。
+- 只扫描受支持的扩展名，默认覆盖 Go、TypeScript、JavaScript、Python、Java、C/C++、C#、Rust、PHP、Ruby、Swift、Kotlin、Scala、Objective-C、Dart、Solidity、Markdown 和 Notebook。
+- 支持通过 `AGENT_MEMORY_CUSTOM_EXTENSIONS` 追加扩展名。
+- 支持默认 glob 忽略规则和 `AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS` 追加规则。
+- 支持读取代码库根目录下 `.gitignore`、`.contextignore`、`.cursorignore` 等 `.xxxignore` 文件。
+- 返回绝对路径和相对路径，并按相对路径稳定排序。
 
 ## 3. `internal/splitter`
 

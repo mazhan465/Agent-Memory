@@ -20,6 +20,8 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envMilvusUsername, " root ")
 	t.Setenv(envMilvusPassword, " password ")
 	t.Setenv(envMilvusCollection, "test_collection")
+	t.Setenv(envCustomExtensions, "vue,.svelte")
+	t.Setenv(envCustomIgnorePatterns, "private/**,*.backup")
 
 	cfg, err := Load()
 	if err != nil {
@@ -58,4 +60,19 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	if cfg.MilvusCollection != "test_collection" {
 		t.Fatalf("MilvusCollection = %s, want test_collection", cfg.MilvusCollection)
 	}
+	if !containsString(cfg.SupportedExts, ".vue") || !containsString(cfg.SupportedExts, ".svelte") {
+		t.Fatalf("SupportedExts does not contain custom extensions: %v", cfg.SupportedExts)
+	}
+	if !containsString(cfg.IgnorePatterns, "private/**") || !containsString(cfg.IgnorePatterns, "*.backup") {
+		t.Fatalf("IgnorePatterns does not contain custom patterns: %v", cfg.IgnorePatterns)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }

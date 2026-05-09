@@ -136,7 +136,7 @@ func (a *app) runIndex(ctx context.Context, args []string) error {
 		return errors.New("usage: code-context index <path>")
 	}
 
-	scannerInstance := scanner.New(a.config.SupportedExts, a.config.IgnoreNames)
+	scannerInstance := scanner.NewWithPatterns(a.config.SupportedExts, a.config.IgnoreNames, a.config.IgnorePatterns)
 	splitterInstance := splitter.NewLineSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines)
 	indexerInstance := indexer.New(scannerInstance, splitterInstance, a.embedder, a.vectorStore, a.snapshotStore)
 	stats, err := indexerInstance.Index(ctx, args[0])

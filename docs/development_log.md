@@ -755,3 +755,41 @@
 - 增加单次搜索内的相邻 chunk 合并和跨 source 去重。
 - 增加 session 清理和过期策略。
 - 将 session 去重沉淀为独立 internal 包，供 MCP Server 和 SessionContext 复用。
+
+## 2026-05-09 非 MCP 优先级确认与文件规则增强
+
+### 目标
+
+根据和 `claude-context` 的对比结果，确认 MCP Server 实装暂不作为最高优先级，优先推进索引状态、增量索引、代码切块、混合检索、文件包含/排除规则、Ollama embedding 和代码项目隔离机制。本轮先完成路线文档更新，并落地文件包含/排除规则增强。
+
+### 方案
+
+- `docs/design/overall_design.md` 增加近期开发优先级，明确 MCP 进入未来规划，当前优先做非 MCP 的代码检索工程化能力。
+- `internal/config` 增加 `AGENT_MEMORY_CUSTOM_EXTENSIONS` 和 `AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS`，支持追加文件扩展名和 glob 忽略规则。
+- 默认扩展名补齐 Objective-C、Dart、Solidity、Notebook 等类型。
+- 默认忽略规则从目录名扩展为 glob pattern，覆盖构建产物、缓存、日志、环境文件、minified/bundle/source map 等常见无关文件。
+- `internal/scanner` 支持读取代码库根目录 `.gitignore`、`.contextignore`、`.cursorignore` 等 `.xxxignore` 文件，并和配置规则合并。
+- `Scanner.Scan` 返回结果按相对路径稳定排序，为后续增量索引和 snapshot 对比提供稳定输入。
+
+### 模块影响
+
+- `internal/config`：新增扩展名和忽略规则配置。
+- `internal/scanner`：新增 ignore 文件读取、glob 匹配和稳定排序。
+- `cmd/code-context/main.go`：索引流程改用 `scanner.NewWithPatterns`。
+- `internal/scanner/scanner_test.go`：新增 ignore 文件和自定义规则测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力和后续路线。
+
+### 验证方式
+
+- `gofmt -w internal/config/config.go internal/scanner/scanner.go internal/scanner/scanner_test.go cmd/code-context/main.go`
+- `go test ./internal/scanner ./internal/config ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 下一步实现文件 hash snapshot 和增量索引基础能力。
+- 然后实现 Go AST splitter，并规划 tree-sitter 多语言切块。
+- 再补充本地关键词/BM25 召回抽象和 Milvus hybrid collection 规划。
+- 接入 Ollama embedding provider。

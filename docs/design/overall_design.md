@@ -21,6 +21,20 @@
 9. 底层支持本地存储和 Milvus 等向量数据库。
 10. 后续支持增量索引、混合检索、AST 切块、Markdown 结构化切分、多 embedding provider、rerank 和上下文压缩。
 
+### 1.1 近期开发优先级
+
+MCP Server 会保留在未来规划中，但当前不作为最高优先级。近期按照以下顺序逐步补齐 `claude-context` 已验证的代码检索工程化能力：
+
+1. **索引状态和可搜索性增强**：在非 MCP 场景先完善索引状态、进度记录和部分可搜索基础能力，为后续异步 MCP 复用。
+2. **增量索引与自动同步基础**：基于文件 hash snapshot 识别新增、删除和修改文件，避免每次全量重建。
+3. **代码切块质量提升**：优先实现 Go AST splitter，后续再评估 tree-sitter 多语言 splitter；无法解析时回退到行级切块。
+4. **混合检索**：在 dense vector 基础上补充关键词/BM25 类召回信号，先完成本地和接口抽象，再规划 Milvus hybrid collection。
+5. **文件包含与排除规则增强**：支持默认规则、环境变量自定义扩展名/忽略规则、根目录 `.gitignore` 和 `.xxxignore`。
+6. **Ollama embedding**：先支持本地 Ollama embedding provider，VoyageAI、Gemini 暂缓。
+7. **代码项目隔离机制**：规划代码索引独立 namespace/collection 策略，避免代码库、知识库和长期记忆互相影响；本地默认仍可使用 namespace，Milvus 后续按 codebase collection 或稳定隔离键演进。
+
+MCP 实装、搜索高级参数、IDE 插件、性能大仓库保护、评测体系、rerank 和上下文压缩进入后续规划，但相关接口设计应避免阻塞未来接入。
+
 ## 2. 系统边界
 
 ### 输入

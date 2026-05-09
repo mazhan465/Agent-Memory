@@ -39,8 +39,12 @@
 # 编译
 make build
 
-# 索引当前项目
+# 索引当前项目；会自动读取根目录 .gitignore / .contextignore 等 .xxxignore 文件
 ./bin/code-context index /path/to/repo
+
+# 追加自定义扩展名和忽略规则
+export AGENT_MEMORY_CUSTOM_EXTENSIONS=.vue,.svelte,.astro
+export AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS='private/**,*.backup'
 
 # 统一搜索代码、知识、历史会话、经验和用户偏好等，返回 JSON；未传 session id 时会自动生成并返回
 ./bin/code-context search /path/to/repo "where is authentication handled"
