@@ -1066,3 +1066,66 @@
 
 - 后续可以基于 `sync --all` 增加后台定时同步或文件触发同步。
 - 后续 MCP Server 的 `index_codebase` / `get_indexing_status` 可以复用同一套 `indexPath` 和 snapshot 能力。
+
+## 2026-05-11 YAML 配置文件支持
+
+### 目标
+
+补齐文件化配置能力，降低使用环境变量配置 embedding、向量存储、索引规则和搜索策略的成本。
+
+### 方案
+
+- `internal/config` 支持默认读取 `~/.AgentMemory/config.yaml`，也支持 `AGENT_MEMORY_CONFIG` 指定路径。
+- 配置加载顺序为默认值、YAML 文件、环境变量，环境变量保持最高优先级。
+- `code-context config init [--force]` 生成带注释的默认 YAML 配置文件。
+- `code-context config path` 输出默认配置文件路径。
+- 搜索未显式传入 types 时使用配置中的 `search.default_types`。
+
+### 模块影响
+
+- `internal/config`：新增 YAML 配置读写和覆盖逻辑。
+- `cmd/code-context`：新增配置子命令，并在 usage 中补充示例。
+- `README.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力。
+
+### 验证方式
+
+- `gofmt -w cmd/code-context/main.go cmd/code-context/search.go cmd/code-context/search_strategy_test.go cmd/code-context/config.go internal/config/config.go internal/config/config_test.go internal/config/file_config.go`
+- `go test ./...`
+
+### 后续计划
+
+- 支持 TOML 配置文件。
+- 后续可增加 `config validate` 和 `config show` 命令。
+
+## 2026-05-11 MCP stdio Server 基础能力实现
+
+### 目标
+
+将 `cmd/code-context-mcp` 从占位命令推进为可被 IDE Agent 调用的 MCP stdio Server，先暴露代码库索引、代码搜索、索引清理和索引状态查询四个基础工具。
+
+### 方案
+
+- `internal/mcpserver` 实现基于 `Content-Length` 帧的 JSON-RPC 2.0 stdio 读写循环。
+- 支持 `initialize`、`ping`、`tools/list` 和 `tools/call` 方法。
+- 注册 `index_codebase`、`search_code`、`clear_index` 和 `get_indexing_status` 工具。
+- MCP 工具复用现有配置、Embedder、VectorStore、Indexer、Searcher 和 SnapshotStore。
+- `cmd/code-context-mcp` 加载配置并启动 stdio Server，stdout 仅输出协议消息，错误输出到 stderr。
+
+### 模块影响
+
+- `internal/mcpserver`：新增 MCP 协议处理、工具定义和工具调用逻辑。
+- `cmd/code-context-mcp`：由占位输出改为启动 MCP stdio Server。
+- `README.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新当前能力和使用方式。
+
+### 验证方式
+
+- `gofmt -w internal/mcpserver/server.go internal/mcpserver/server_test.go cmd/code-context-mcp/main.go`
+- `go test ./internal/mcpserver`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /dev/null ./cmd/code-context-mcp`
+- `git diff --check`
+
+### 后续计划
+
+- 增加 `import_knowledge`、`search_agent_memory` 和统一 prompt context 工具入口。
+- 将 CLI 和 MCP 共用的应用组装逻辑沉淀到内部 runtime 包，减少工厂方法重复。

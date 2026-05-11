@@ -15,9 +15,16 @@
 
 - `Config` 结构体
 
+### 当前实现
+
+- 支持内置默认值、YAML 配置文件和环境变量三层配置。
+- 默认读取 `~/.AgentMemory/config.yaml`，也支持通过 `AGENT_MEMORY_CONFIG` 指定配置文件。
+- `code-context config init [--force]` 可生成默认配置，`config path` 可输出默认配置路径。
+- 环境变量优先级最高，可覆盖 YAML 和默认值。
+
 ### 后续扩展
 
-支持 YAML / TOML 配置文件。
+支持 TOML 配置文件。
 
 ## 2. `internal/scanner`
 
@@ -363,14 +370,17 @@
 
 ### 职责
 
-后续提供 MCP Server 封装。
+提供 MCP stdio Server 封装，让 IDE Agent 可通过工具调用代码库索引和检索能力。
+
+### 当前工具
+
+- `index_codebase`：索引或增量刷新本地代码库路径。
+- `search_code`：在已索引代码库中检索代码片段。
+- `clear_index`：清理指定代码库的向量数据和 snapshot。
+- `get_indexing_status`：查询指定代码库索引状态。
 
 ### 计划工具
 
-- `index_codebase`
-- `search_code`
-- `clear_index`
-- `get_indexing_status`
 - `index_conversation`
 - `index_tool_history`
 - `index_document_source`
@@ -401,6 +411,8 @@
 - `import memory <type> <json-or-jsonl-path> [source-id]`：导入 `conversation`、`experience`、`preference`、`tool_history`、`fact` 等长期记忆 source
 - `source list [type]`：以 JSON 查看已导入 source
 - `source clear <type> <source-id>`：清理指定 source 的向量和 catalog 记录
+- `config init [--force]`：生成默认 YAML 配置文件
+- `config path`：输出默认配置文件路径
 - `status <path>`
 - `clear <path>`
 
