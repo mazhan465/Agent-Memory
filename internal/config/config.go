@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	defaultStorageDir           = ".agent-memory"
+	defaultStorageDir           = ".AgentMemory"
+	defaultConfigFileName       = "config.yaml"
 	defaultEmbeddingProvider    = "hash"
 	defaultVectorStoreProvider  = "local"
 	defaultEmbeddingDim         = 256
@@ -28,6 +29,7 @@ const (
 	defaultOllamaEmbeddingModel = "embeddinggemma"
 	defaultMilvusAddress        = "localhost:19530"
 	defaultMilvusCollection     = "agent_memory_chunks"
+	envConfigPath               = "AGENT_MEMORY_CONFIG"
 	envStorageDir               = "AGENT_MEMORY_HOME"
 	envEmbeddingProvider        = "AGENT_MEMORY_EMBEDDING_PROVIDER"
 	envVectorStoreProvider      = "AGENT_MEMORY_VECTOR_STORE"
@@ -41,6 +43,7 @@ const (
 	envMilvusUsername           = "AGENT_MEMORY_MILVUS_USERNAME"
 	envMilvusPassword           = "AGENT_MEMORY_MILVUS_PASSWORD"
 	envMilvusCollection         = "AGENT_MEMORY_MILVUS_COLLECTION"
+	envDefaultSearchTypes       = "AGENT_MEMORY_DEFAULT_SEARCH_TYPES"
 	envCustomExtensions         = "AGENT_MEMORY_CUSTOM_EXTENSIONS"
 	envCustomIgnorePatterns     = "AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS"
 )
@@ -69,60 +72,24 @@ type Config struct {
 	MaxChunkLines        int
 	ChunkOverlapLines    int
 	SearchLimit          int
+	DefaultSearchTypes   []string
 	SearchStrategies     map[string]SearchStrategy
 	SupportedExts        []string
 	IgnoreNames          []string
 	IgnorePatterns       []string
 }
 
-// Load 从环境变量和默认值加载配置。
+// Load 从 YAML 配置文件、环境变量和默认值加载配置。
 func Load() (Config, error) {
-	searchStrategies := defaultSearchStrategies()
-	applySearchStrategyEnv(searchStrategies)
-
-	storageDir, err := defaultHomeStorageDir()
+	cfg, err := defaultConfig()
 	if err != nil {
 		return Config{}, err
 	}
-	if customStorageDir := strings.TrimSpace(os.Getenv(envStorageDir)); customStorageDir != "" {
-		storageDir = customStorageDir
+	if err := applyConfigFile(&cfg); err != nil {
+		return Config{}, err
 	}
-
-	return Config{
-		StorageDir:           storageDir,
-		EmbeddingProvider:    getString(envEmbeddingProvider, defaultEmbeddingProvider),
-		VectorStoreProvider:  getString(envVectorStoreProvider, defaultVectorStoreProvider),
-		EmbeddingDimension:   getPositiveInt(envEmbeddingDimension, defaultEmbeddingDim),
-		OpenAIBaseURL:        getString(envOpenAIBaseURL, defaultOpenAIBaseURL),
-		OpenAIAPIKey:         strings.TrimSpace(os.Getenv(envOpenAIAPIKey)),
-		OpenAIEmbeddingModel: getString(envOpenAIEmbeddingModel, defaultOpenAIEmbeddingModel),
-		OllamaHost:           getString(envOllamaHost, defaultOllamaHost),
-		OllamaEmbeddingModel: getString(envOllamaEmbeddingModel, defaultOllamaEmbeddingModel),
-		MilvusAddress:        getString(envMilvusAddress, defaultMilvusAddress),
-		MilvusUsername:       strings.TrimSpace(os.Getenv(envMilvusUsername)),
-		MilvusPassword:       strings.TrimSpace(os.Getenv(envMilvusPassword)),
-		MilvusCollection:     getString(envMilvusCollection, defaultMilvusCollection),
-		MaxChunkLines:        defaultMaxChunkLines,
-		ChunkOverlapLines:    defaultChunkOverlap,
-		SearchLimit:          defaultSearchLimit,
-		SearchStrategies:     searchStrategies,
-		SupportedExts: mergeCSVValues([]string{
-			".go", ".ts", ".tsx", ".js", ".jsx", ".py", ".java", ".cpp", ".c", ".h", ".hpp",
-			".cs", ".rs", ".php", ".rb", ".swift", ".kt", ".scala", ".m", ".mm", ".dart", ".sol",
-			".md", ".markdown", ".ipynb",
-		}, os.Getenv(envCustomExtensions), true),
-		IgnoreNames: []string{
-			".git", ".svn", ".hg", ".idea", ".vscode", "node_modules", "dist", "build", "out", "target",
-			"coverage", "__pycache__", ".pytest_cache", ".cache", "tmp", "temp", "logs", ".agent-memory",
-		},
-		IgnorePatterns: mergeCSVValues([]string{
-			"node_modules/**", "dist/**", "build/**", "out/**", "target/**", "coverage/**", ".nyc_output/**",
-			".git/**", ".svn/**", ".hg/**", ".idea/**", ".vscode/**", "__pycache__/**", ".pytest_cache/**",
-			".cache/**", "tmp/**", "temp/**", "logs/**", "*.log", ".env", ".env.*", "*.local",
-			"*.min.js", "*.min.css", "*.min.map", "*.bundle.js", "*.bundle.css", "*.chunk.js", "*.vendor.js",
-			"*.polyfills.js", "*.runtime.js", "*.map", ".agent-memory/**",
-		}, os.Getenv(envCustomIgnorePatterns), false),
-	}, nil
+	applyEnvConfig(&cfg)
+	return cfg, nil
 }
 
 func defaultHomeStorageDir() (string, error) {

@@ -51,6 +51,10 @@ func run(ctx context.Context, args []string) error {
 		return nil
 	}
 
+	if args[0] == "config" {
+		return runConfig(args[1:])
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -278,6 +282,8 @@ func printUsage() {
   code-context import memory <type> <json-or-jsonl-path> [source-id]
   code-context source list [type]
   code-context source clear <type> <source-id>
+  code-context config init [--force]
+  code-context config path
   code-context status <path>
   code-context clear <path>
 
@@ -291,6 +297,7 @@ Examples:
   code-context index .
   code-context sync .
   code-context sync --all
+  code-context config init
   code-context search . "vector database operations" 5
   code-context search . "project rules" knowledge
   code-context search . "previous fix" 5 conversation,experience session-dev

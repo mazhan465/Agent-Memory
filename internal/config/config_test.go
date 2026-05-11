@@ -7,11 +7,15 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
 func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
+	setIsolatedHome(t)
 	t.Setenv(envStorageDir, "/tmp/agent-memory-test")
 	t.Setenv(envEmbeddingProvider, "openai")
 	t.Setenv(envVectorStoreProvider, "milvus")
@@ -79,6 +83,9 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	if !containsString(cfg.IgnorePatterns, "private/**") || !containsString(cfg.IgnorePatterns, "*.backup") {
 		t.Fatalf("IgnorePatterns does not contain custom patterns: %v", cfg.IgnorePatterns)
 	}
+	if len(cfg.DefaultSearchTypes) != 1 || cfg.DefaultSearchTypes[0] != "all" {
+		t.Fatalf("DefaultSearchTypes = %v, want [all]", cfg.DefaultSearchTypes)
+	}
 	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
 	if codeStrategy.SemanticWeight != 0.2 || codeStrategy.KeywordWeight != 0.8 {
 		t.Fatalf("code strategy = %+v, want semantic=0.2 keyword=0.8", codeStrategy)
@@ -86,6 +93,171 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	conversationStrategy := cfg.SearchStrategy(SearchStrategyConversation)
 	if conversationStrategy.SemanticWeight != 0.85 || conversationStrategy.KeywordWeight != 0.15 {
 		t.Fatalf("conversation strategy = %+v, want semantic=0.85 keyword=0.15", conversationStrategy)
+	}
+}
+
+func TestLoadConfigFromYAMLFile(t *testing.T) {
+	setIsolatedHome(t)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	content := `storage_dir: /tmp/yaml-agent-memory
+embedding:
+  provider: openai
+  dimension: 1024
+  openai:
+    base_url: https://example.com/v1
+    api_key: yaml-key
+    model: text-embedding-3-large
+  ollama:
+    host: http://localhost:11435
+    model: nomic-embed-text
+vector_store:
+  provider: milvus
+  milvus:
+    address: 127.0.0.1:19530
+    username: root
+    password: yaml-password
+    collection: yaml_collection
+indexing:
+  max_chunk_lines: 80
+  chunk_overlap_lines: 10
+  supported_exts:
+    - go
+    - .md
+  ignore_names:
+    - .git
+    - vendor
+  ignore_patterns:
+    - vendor/**
+search:
+  limit: 12
+  default_types:
+    - code
+    - experience
+  strategies:
+    code:
+      semantic_weight: 0.3
+      keyword_weight: 0.7
+    experience:
+      semantic_weight: 2
+      keyword_weight: 1
+`
+	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	t.Setenv(envConfigPath, configPath)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.StorageDir != "/tmp/yaml-agent-memory" {
+		t.Fatalf("StorageDir = %s, want /tmp/yaml-agent-memory", cfg.StorageDir)
+	}
+	if cfg.EmbeddingProvider != "openai" || cfg.EmbeddingDimension != 1024 {
+		t.Fatalf("embedding config = %s/%d, want openai/1024", cfg.EmbeddingProvider, cfg.EmbeddingDimension)
+	}
+	if cfg.OpenAIAPIKey != "yaml-key" || cfg.OpenAIEmbeddingModel != "text-embedding-3-large" {
+		t.Fatalf("openai config = key:%s model:%s", cfg.OpenAIAPIKey, cfg.OpenAIEmbeddingModel)
+	}
+	if cfg.VectorStoreProvider != "milvus" || cfg.MilvusCollection != "yaml_collection" {
+		t.Fatalf("vector store config = %s/%s", cfg.VectorStoreProvider, cfg.MilvusCollection)
+	}
+	if cfg.MaxChunkLines != 80 || cfg.ChunkOverlapLines != 10 {
+		t.Fatalf("chunk config = %d/%d, want 80/10", cfg.MaxChunkLines, cfg.ChunkOverlapLines)
+	}
+	if !slices.Equal(cfg.SupportedExts, []string{".go", ".md"}) {
+		t.Fatalf("SupportedExts = %v, want [.go .md]", cfg.SupportedExts)
+	}
+	if !slices.Equal(cfg.DefaultSearchTypes, []string{"code", "experience"}) {
+		t.Fatalf("DefaultSearchTypes = %v, want [code experience]", cfg.DefaultSearchTypes)
+	}
+	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
+	if codeStrategy.SemanticWeight != 0.3 || codeStrategy.KeywordWeight != 0.7 {
+		t.Fatalf("code strategy = %+v, want semantic=0.3 keyword=0.7", codeStrategy)
+	}
+	experienceStrategy := cfg.SearchStrategy(SearchStrategyExperience)
+	if experienceStrategy.SemanticWeight != 2.0/3.0 || experienceStrategy.KeywordWeight != 1.0/3.0 {
+		t.Fatalf("experience strategy = %+v, want semantic=2/3 keyword=1/3", experienceStrategy)
+	}
+}
+
+func TestWriteDefaultFile(t *testing.T) {
+	setIsolatedHome(t)
+	path, err := WriteDefaultFile(false)
+	if err != nil {
+		t.Fatalf("WriteDefaultFile() error = %v", err)
+	}
+	wantPath := filepath.Join(os.Getenv("HOME"), defaultStorageDir, defaultConfigFileName)
+	if path != wantPath {
+		t.Fatalf("path = %s, want %s", path, wantPath)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	generated := string(data)
+	for _, want := range []string{
+		"# provider 可选项：",
+		"# - hash:",
+		"# - openai:",
+		"# - openai-compatible:",
+		"# - ollama:",
+		"  # openai:",
+		"  # ollama:",
+		"  # milvus:",
+		"default_types:",
+		"external_knowledge:",
+		"semantic_weight:",
+		"keyword_weight:",
+	} {
+		if !strings.Contains(generated, want) {
+			t.Fatalf("generated config does not contain %q: %s", want, generated)
+		}
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() generated config error = %v", err)
+	}
+	if cfg.EmbeddingProvider != defaultEmbeddingProvider || cfg.VectorStoreProvider != defaultVectorStoreProvider {
+		t.Fatalf("generated config providers = %s/%s", cfg.EmbeddingProvider, cfg.VectorStoreProvider)
+	}
+	if _, err := WriteDefaultFile(false); err == nil {
+		t.Fatalf("WriteDefaultFile(false) succeeded for existing file")
+	}
+	if _, err := WriteDefaultFile(true); err != nil {
+		t.Fatalf("WriteDefaultFile(true) error = %v", err)
+	}
+}
+
+func setIsolatedHome(t *testing.T) {
+	t.Helper()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+	for _, name := range []string{
+		envConfigPath,
+		envStorageDir,
+		envEmbeddingProvider,
+		envVectorStoreProvider,
+		envEmbeddingDimension,
+		envOpenAIBaseURL,
+		envOpenAIAPIKey,
+		envOpenAIEmbeddingModel,
+		envOllamaHost,
+		envOllamaEmbeddingModel,
+		envMilvusAddress,
+		envMilvusUsername,
+		envMilvusPassword,
+		envMilvusCollection,
+		envDefaultSearchTypes,
+		envCustomExtensions,
+		envCustomIgnorePatterns,
+	} {
+		t.Setenv(name, "")
+	}
+	for name := range defaultSearchStrategies() {
+		t.Setenv(searchStrategyEnvName(name, "SEMANTIC_WEIGHT"), "")
+		t.Setenv(searchStrategyEnvName(name, "KEYWORD_WEIGHT"), "")
 	}
 }
 

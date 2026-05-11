@@ -182,6 +182,9 @@ func (a *app) parseSearchArgs(args []string) (searchRequestOptions, error) {
 		}
 		sessionID = positionals[4]
 	}
+	if typeArg == "" {
+		typeArg = strings.Join(a.config.DefaultSearchTypes, ",")
+	}
 	selection, err := newSearchTypeSelection(typeArg)
 	if err != nil {
 		return searchRequestOptions{}, err

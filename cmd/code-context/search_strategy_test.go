@@ -7,6 +7,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/mazhan465/Agent-Memory/internal/config"
@@ -52,5 +53,22 @@ func TestSearchStrategyName(t *testing.T) {
 				t.Fatalf("searchStrategyName() = %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestParseSearchArgsUsesConfiguredDefaultTypes(t *testing.T) {
+	application := app{config: config.Config{SearchLimit: 8, DefaultSearchTypes: []string{"code", "experience"}}}
+	options, err := application.parseSearchArgs([]string{".", "query"})
+	if err != nil {
+		t.Fatalf("parseSearchArgs() error = %v", err)
+	}
+	if !options.Selection.Code {
+		t.Fatalf("Selection.Code = false, want true")
+	}
+	if _, ok := options.Selection.SourceTypes[contextdoc.SourceTypeExperience]; !ok {
+		t.Fatalf("Selection.SourceTypes does not contain experience: %v", options.Selection.SourceTypes)
+	}
+	if !slices.Equal(options.Selection.Labels, []string{"code", "experience"}) {
+		t.Fatalf("Selection.Labels = %v, want [code experience]", options.Selection.Labels)
 	}
 }
