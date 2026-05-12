@@ -1,0 +1,27 @@
+[features]
+codex_hooks = true
+
+[[hooks.SessionStart]]
+matcher = "startup|resume"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = '{{PYTHON_CMD}} "$(git rev-parse --show-toplevel)/.codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py" session-start'
+timeout = 120
+statusMessage = "Preparing Agent-Memory context index"
+
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = '{{PYTHON_CMD}} "$(git rev-parse --show-toplevel)/.codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py" prompt'
+timeout = 120
+statusMessage = "Searching Agent-Memory context"
+
+[[hooks.Stop]]
+
+[[hooks.Stop.hooks]]
+type = "command"
+command = '{{PYTHON_CMD}} "$(git rev-parse --show-toplevel)/.codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py" sync'
+timeout = 120
+statusMessage = "Syncing Agent-Memory index"
