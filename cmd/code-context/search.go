@@ -55,6 +55,8 @@ type searchJSONNamespace struct {
 	Strategy       string  `json:"strategy"`
 	SemanticWeight float64 `json:"semantic_weight"`
 	KeywordWeight  float64 `json:"keyword_weight"`
+	KeywordProfile string  `json:"keyword_profile"`
+	FusionMode     string  `json:"fusion_mode"`
 }
 
 type searchJSONResult struct {
@@ -223,6 +225,9 @@ func (s *searchTypeSelection) addSearchType(value string, labels map[string]stru
 	case "code":
 		s.Code = true
 		labels[searchCategoryCode] = struct{}{}
+	case "doc", "non_code", "non-code":
+		s.addDocSearchTypes()
+		labels["doc"] = struct{}{}
 	case "knowledge", "knowledge_document", "document", "documents", "docs":
 		s.SourceTypes[contextdoc.SourceTypeDocument] = struct{}{}
 		s.SourceTypes[contextdoc.SourceTypeExternalKnowledge] = struct{}{}
@@ -246,6 +251,20 @@ func (s *searchTypeSelection) addSearchType(value string, labels map[string]stru
 		return fmt.Errorf("unsupported search type %q", value)
 	}
 	return nil
+}
+
+func (s *searchTypeSelection) addDocSearchTypes() {
+	for _, sourceType := range []contextdoc.SourceType{
+		contextdoc.SourceTypeDocument,
+		contextdoc.SourceTypeExternalKnowledge,
+		contextdoc.SourceTypeConversation,
+		contextdoc.SourceTypeExperience,
+		contextdoc.SourceTypePreference,
+		contextdoc.SourceTypeToolHistory,
+		contextdoc.SourceTypeFact,
+	} {
+		s.SourceTypes[sourceType] = struct{}{}
+	}
 }
 
 func (s searchTypeSelection) includeSourceType(sourceType contextdoc.SourceType) bool {
@@ -288,7 +307,7 @@ func isSearchTypeArg(typeArg string) bool {
 
 func isSupportedSearchType(value string) bool {
 	switch value {
-	case "all", "code", "knowledge", "knowledge_document", "document", "documents", "docs",
+	case "all", "code", "doc", "non_code", "non-code", "knowledge", "knowledge_document", "document", "documents", "docs",
 		"conversation", "history", "chat", "historical_conversation", "experience", "experiences",
 		"preference", "preferences", "user_preference", "user_preferences", "tool", "tool_history", "fact", "facts":
 		return true
@@ -446,9 +465,13 @@ func (a *app) appendNamespaceResults(
 	strategy := a.config.SearchStrategy(strategyName)
 	options.SemanticWeight = strategy.SemanticWeight
 	options.KeywordWeight = strategy.KeywordWeight
+	options.KeywordProfile = keywordProfileForSearchStrategy(strategyName)
+	options.FusionMode = fusionModeForSearchStrategy(strategyName)
 	searchNamespace.Strategy = strategyName
 	searchNamespace.SemanticWeight = strategy.SemanticWeight
 	searchNamespace.KeywordWeight = strategy.KeywordWeight
+	searchNamespace.KeywordProfile = options.KeywordProfile
+	searchNamespace.FusionMode = options.FusionMode
 	response.SearchedNamespaces = append(response.SearchedNamespaces, searchNamespace)
 	matches, err := a.vectorStore.Search(ctx, namespace, queryVector, options)
 	if err != nil {
@@ -488,6 +511,34 @@ func searchStrategyName(searchNamespace searchJSONNamespace) string {
 	default:
 		return config.SearchStrategyDefault
 	}
+}
+
+func keywordProfileForSearchStrategy(strategyName string) string {
+	switch strategyName {
+	case config.SearchStrategyCode:
+		return vectorstore.KeywordProfileCode
+	case config.SearchStrategyKnowledge, "external_knowledge":
+		return vectorstore.KeywordProfileKnowledge
+	case config.SearchStrategyConversation:
+		return vectorstore.KeywordProfileConversation
+	case config.SearchStrategyExperience:
+		return vectorstore.KeywordProfileExperience
+	case config.SearchStrategyPreference:
+		return vectorstore.KeywordProfilePreference
+	case config.SearchStrategyToolHistory:
+		return vectorstore.KeywordProfileToolHistory
+	case config.SearchStrategyFact:
+		return vectorstore.KeywordProfileFact
+	default:
+		return vectorstore.KeywordProfileDefault
+	}
+}
+
+func fusionModeForSearchStrategy(strategyName string) string {
+	if strategyName == config.SearchStrategyCode {
+		return vectorstore.SearchFusionRRF
+	}
+	return vectorstore.SearchFusionLinear
 }
 
 func makeSearchJSONResults(results []categorizedSearchResult) []searchJSONResult {

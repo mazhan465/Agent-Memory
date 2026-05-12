@@ -47,6 +47,12 @@ func (s *Searcher) Search(ctx context.Context, rootPath string, query string, op
 	if options.Query == "" {
 		options.Query = query
 	}
+	if options.KeywordProfile == "" {
+		options.KeywordProfile = vectorstore.KeywordProfileCode
+	}
+	if options.FusionMode == "" {
+		options.FusionMode = vectorstore.SearchFusionRRF
+	}
 	if len(options.DomainFilters) == 0 && s.domainResolver != nil {
 		decision, err := s.domainResolver.Resolve(ctx, domain.Input{Query: query})
 		if err != nil {

@@ -46,7 +46,7 @@ func (c Config) SearchStrategy(name string) SearchStrategy {
 func defaultSearchStrategies() map[string]SearchStrategy {
 	return map[string]SearchStrategy{
 		SearchStrategyDefault:      {SemanticWeight: 0.75, KeywordWeight: 0.25},
-		SearchStrategyCode:         {SemanticWeight: 0.60, KeywordWeight: 0.40},
+		SearchStrategyCode:         {SemanticWeight: 0.30, KeywordWeight: 0.70},
 		SearchStrategyKnowledge:    {SemanticWeight: 0.70, KeywordWeight: 0.30},
 		SearchStrategyConversation: {SemanticWeight: 0.85, KeywordWeight: 0.15},
 		SearchStrategyExperience:   {SemanticWeight: 0.75, KeywordWeight: 0.25},

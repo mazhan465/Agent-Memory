@@ -291,7 +291,8 @@ func printUsage() {
   code-context clear <path>
 
 Search types:
-  all, code, knowledge, conversation, experience, preference, tool_history, fact
+  all, code, doc, knowledge, conversation, experience, preference, tool_history, fact
+  doc means all non-code sources: knowledge, conversation, experience, preference, tool_history, and fact
 
 Memory import types:
   conversation, experience, preference, tool_history, fact

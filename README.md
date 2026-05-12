@@ -128,6 +128,7 @@ go build -o bin/code-context-mcp ./cmd/code-context-mcp
 
 - `all`
 - `code`
+- `doc`：所有非 code 来源，包括 `knowledge`、`conversation`、`experience`、`preference`、`tool_history`、`fact`
 - `knowledge`
 - `conversation`
 - `experience`
@@ -318,6 +319,8 @@ EOF
 
 也支持部分 SWE-bench / claude-context 风格字段，例如 `instances`、`problem_statement`、`patch`、`oracles`、`oracle_files`。
 
+评估结果会输出召回质量指标和运行效率指标：质量指标包括 hit rate、precision、recall、F1、MRR、nDCG、文件级 precision/recall/F1；效率指标包括单 case 与汇总 latency、估算结果 token、结果字符数、结果数量、去重数量和搜索 namespace 数。
+
 ## 常用环境变量
 
 | 变量 | 说明 |
@@ -385,7 +388,9 @@ go build -o bin/code-context-mcp ./cmd/code-context-mcp
 - Source bundle 导出、导入、备份和跨设备同步。
 - 更多语言的 tree-sitter 结构切块。
 - 更完善的安装包、Release 二进制和平台兼容测试。
-- 更细粒度的检索评估集和 benchmark。
+- 参考 claude-context 增强代码搜索核心质量：补齐 BM25 / sparse vector、dense vector、RRF rerank 或可插拔 reranker 等能力。
+- 参考 claude-context 增强 Milvus 搜索：让 Milvus 后端支持真正的 hybrid search，并与本地搜索的关键词、路径、符号元数据融合策略保持一致。
+- 参考 claude-context 完善评估体系：补充 token、成本、延迟、工具调用次数、索引耗时、Agent 任务成功率等 benchmark，和现有 recall / precision / F1 / MRR / nDCG 指标形成闭环。
 
 ## 文档
 

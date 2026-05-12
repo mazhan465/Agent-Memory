@@ -147,3 +147,92 @@ func TestLocalStoreSearchFiltersByDocumentMetadata(t *testing.T) {
 		t.Fatalf("result ID = %s, want api-doc", results[0].Document.ID)
 	}
 }
+
+func TestLocalStoreCodeSearchUsesRRFAndSymbolProfile(t *testing.T) {
+	ctx := context.Background()
+	store := NewLocalStore(t.TempDir())
+	namespace := "test_namespace"
+	documents := []Document{
+		{
+			ID:           "semantic-doc",
+			Namespace:    namespace,
+			Vector:       []float32{1, 0},
+			Content:      "generic repository implementation",
+			RelativePath: "internal/repository/generic.go",
+		},
+		{
+			ID:           "symbol-doc",
+			Namespace:    namespace,
+			Vector:       []float32{0, 1},
+			Content:      "order writer implementation",
+			RelativePath: "internal/order/writer.go",
+			Metadata: map[string]string{
+				metadataSymbolName: "OrderWriter",
+				metadataSymbolKind: "struct",
+			},
+		},
+	}
+	if err := store.Put(ctx, namespace, documents); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	results, err := store.Search(ctx, namespace, []float32{1, 0}, SearchOptions{
+		Query:          "OrderWriter",
+		SemanticWeight: 0.6,
+		KeywordWeight:  0.4,
+		KeywordProfile: KeywordProfileCode,
+		FusionMode:     SearchFusionRRF,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(results))
+	}
+	if results[0].Document.ID != "symbol-doc" {
+		t.Fatalf("first result ID = %s, want symbol-doc", results[0].Document.ID)
+	}
+}
+
+func TestLocalStoreConversationSearchKeepsSemanticDominant(t *testing.T) {
+	ctx := context.Background()
+	store := NewLocalStore(t.TempDir())
+	namespace := "test_namespace"
+	documents := []Document{
+		{
+			ID:        "semantic-conversation",
+			Namespace: namespace,
+			Vector:    []float32{1, 0},
+			Content:   "previous discussion about repository design",
+		},
+		{
+			ID:        "keyword-conversation",
+			Namespace: namespace,
+			Vector:    []float32{0, 1},
+			Content:   "OrderRepository OrderRepository OrderRepository",
+			Metadata: map[string]string{
+				metadataRole: "assistant",
+			},
+		},
+	}
+	if err := store.Put(ctx, namespace, documents); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+
+	results, err := store.Search(ctx, namespace, []float32{1, 0}, SearchOptions{
+		Query:          "OrderRepository",
+		SemanticWeight: 0.85,
+		KeywordWeight:  0.15,
+		KeywordProfile: KeywordProfileConversation,
+		FusionMode:     SearchFusionLinear,
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("len(results) = %d, want 2", len(results))
+	}
+	if results[0].Document.ID != "semantic-conversation" {
+		t.Fatalf("first result ID = %s, want semantic-conversation", results[0].Document.ID)
+	}
+}

@@ -19,6 +19,23 @@ import (
 
 const vectorDirName = "vectors"
 
+const (
+	defaultRRFK = 60
+	bm25K1      = 1.2
+	bm25B       = 0.75
+)
+
+const (
+	metadataSymbolName = "symbol_name"
+	metadataSymbolKind = "symbol_kind"
+	metadataChunkKind  = "chunk_kind"
+	metadataRole       = "role"
+	metadataToolName   = "tool_name"
+	metadataCommand    = "command"
+	metadataStatus     = "status"
+	metadataTags       = "tags"
+)
+
 // LocalStore 使用 JSON 文件持久化向量文档。
 type LocalStore struct {
 	storageDir string
@@ -69,7 +86,7 @@ func (s *LocalStore) ReplaceFiles(
 	return s.save(namespace, mergedDocuments)
 }
 
-// Search 在指定 namespace 中执行余弦相似度 TopK 检索。
+// Search 在指定 namespace 中执行本地混合检索。
 func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector []float32, options SearchOptions) ([]SearchResult, error) {
 	select {
 	case <-ctx.Done():
@@ -85,8 +102,7 @@ func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector [
 	extensionSet := makeStringSet(options.ExtensionFilters)
 	metadataFilters := metadataFilterSets(options)
 	queryTokens := tokenizeSearchText(options.Query)
-	semanticWeight, keywordWeight := searchWeights(options)
-	results := make([]SearchResult, 0, len(documents))
+	candidates := make([]localSearchCandidate, 0, len(documents))
 	for _, document := range documents {
 		if len(extensionSet) > 0 {
 			if _, ok := extensionSet[document.FileExtension]; !ok {
@@ -96,17 +112,25 @@ func (s *LocalStore) Search(ctx context.Context, namespace string, queryVector [
 		if !matchMetadataFilters(document.Metadata, metadataFilters) {
 			continue
 		}
-		semanticScore := cosineSimilarity(queryVector, document.Vector)
-		keywordScore := keywordMatchScore(queryTokens, document)
-		results = append(results, SearchResult{
-			Document: document,
-			Score:    combinedSearchScore(semanticScore, keywordScore, semanticWeight, keywordWeight),
+		candidates = append(candidates, localSearchCandidate{
+			document:      document,
+			semanticScore: cosineSimilarity(queryVector, document.Vector),
 		})
 	}
 
-	sort.SliceStable(results, func(i int, j int) bool {
-		return results[i].Score > results[j].Score
+	applyKeywordScores(candidates, queryTokens, options.KeywordProfile)
+	semanticWeight, keywordWeight := searchWeights(options)
+	applyCandidateScores(candidates, semanticWeight, keywordWeight, searchFusionMode(options))
+	sort.SliceStable(candidates, func(i int, j int) bool {
+		return compareLocalSearchCandidates(candidates[i], candidates[j])
 	})
+	results := make([]SearchResult, 0, len(candidates))
+	for _, candidate := range candidates {
+		results = append(results, SearchResult{
+			Document: candidate.document,
+			Score:    candidate.score,
+		})
+	}
 	if options.Limit > 0 && len(results) > options.Limit {
 		results = results[:options.Limit]
 	}
@@ -240,6 +264,36 @@ func searchWeights(options SearchOptions) (float64, float64) {
 	return semanticWeight / total, keywordWeight / total
 }
 
+type localSearchCandidate struct {
+	document      Document
+	semanticScore float64
+	keywordScore  float64
+	semanticRank  int
+	keywordRank   int
+	score         float64
+}
+
+type keywordCorpus struct {
+	documents        []map[string]float64
+	documentLengths  []float64
+	documentFreq     map[string]int
+	averageDocLength float64
+}
+
+type keywordFieldWeights struct {
+	Content         float64
+	RelativePath    float64
+	FileExtension   float64
+	Language        float64
+	DefaultMetadata float64
+	Metadata        map[string]float64
+}
+
+type weightedSearchField struct {
+	text   string
+	weight float64
+}
+
 func combinedSearchScore(semanticScore float64, keywordScore float64, semanticWeight float64, keywordWeight float64) float64 {
 	if keywordScore == 0 {
 		return semanticScore * semanticWeight
@@ -247,41 +301,333 @@ func combinedSearchScore(semanticScore float64, keywordScore float64, semanticWe
 	return semanticScore*semanticWeight + keywordScore*keywordWeight
 }
 
-func keywordMatchScore(queryTokens []string, document Document) float64 {
-	if len(queryTokens) == 0 {
-		return 0
+func applyKeywordScores(candidates []localSearchCandidate, queryTokens []string, profile string) {
+	if len(candidates) == 0 || len(queryTokens) == 0 {
+		return
 	}
-	documentTokens := tokenizeSearchText(searchableDocumentText(document))
-	if len(documentTokens) == 0 {
-		return 0
+	corpus := newKeywordCorpus(candidates, normalizeKeywordProfile(profile))
+	for index := range candidates {
+		candidates[index].keywordScore = corpus.score(queryTokens, index)
 	}
-	documentSet := makeStringSet(documentTokens)
-	matched := 0
-	for _, token := range uniqueStrings(queryTokens) {
-		if _, ok := documentSet[token]; ok {
-			matched++
-		}
-	}
-	if matched == 0 {
-		return 0
-	}
-	return float64(matched) / float64(len(uniqueStrings(queryTokens)))
 }
 
-func searchableDocumentText(document Document) string {
-	parts := []string{
-		document.Content,
-		document.RelativePath,
-		document.FileExtension,
-		document.Language,
+func applyCandidateScores(candidates []localSearchCandidate, semanticWeight float64, keywordWeight float64, fusionMode string) {
+	if fusionMode == SearchFusionRRF {
+		assignSemanticRanks(candidates)
+		assignKeywordRanks(candidates)
+		for index := range candidates {
+			candidates[index].score = semanticWeight*rrfRankScore(candidates[index].semanticRank) +
+				keywordWeight*rrfRankScore(candidates[index].keywordRank)
+		}
+		return
 	}
-	for _, value := range document.Metadata {
-		parts = append(parts, value)
+	for index := range candidates {
+		candidates[index].score = combinedSearchScore(
+			candidates[index].semanticScore,
+			candidates[index].keywordScore,
+			semanticWeight,
+			keywordWeight,
+		)
 	}
-	return strings.Join(parts, "\n")
+}
+
+func assignSemanticRanks(candidates []localSearchCandidate) {
+	indices := sortedCandidateIndices(candidates, func(candidate localSearchCandidate) float64 {
+		return candidate.semanticScore
+	})
+	for rank, index := range indices {
+		candidates[index].semanticRank = rank + 1
+	}
+}
+
+func assignKeywordRanks(candidates []localSearchCandidate) {
+	indices := sortedCandidateIndices(candidates, func(candidate localSearchCandidate) float64 {
+		return candidate.keywordScore
+	})
+	rank := 1
+	for _, index := range indices {
+		if candidates[index].keywordScore <= 0 {
+			continue
+		}
+		candidates[index].keywordRank = rank
+		rank++
+	}
+}
+
+func sortedCandidateIndices(candidates []localSearchCandidate, score func(localSearchCandidate) float64) []int {
+	indices := make([]int, 0, len(candidates))
+	for index := range candidates {
+		indices = append(indices, index)
+	}
+	sort.SliceStable(indices, func(i int, j int) bool {
+		left := candidates[indices[i]]
+		right := candidates[indices[j]]
+		if score(left) != score(right) {
+			return score(left) > score(right)
+		}
+		return compareDocuments(left.document, right.document)
+	})
+	return indices
+}
+
+func rrfRankScore(rank int) float64 {
+	if rank <= 0 {
+		return 0
+	}
+	return 1 / float64(defaultRRFK+rank)
+}
+
+func compareLocalSearchCandidates(left localSearchCandidate, right localSearchCandidate) bool {
+	if left.score != right.score {
+		return left.score > right.score
+	}
+	return compareDocuments(left.document, right.document)
+}
+
+func compareDocuments(left Document, right Document) bool {
+	if left.RelativePath != right.RelativePath {
+		return left.RelativePath < right.RelativePath
+	}
+	if left.StartLine != right.StartLine {
+		return left.StartLine < right.StartLine
+	}
+	if left.EndLine != right.EndLine {
+		return left.EndLine < right.EndLine
+	}
+	return left.ID < right.ID
+}
+
+func newKeywordCorpus(candidates []localSearchCandidate, profile string) keywordCorpus {
+	corpus := keywordCorpus{
+		documents:       make([]map[string]float64, 0, len(candidates)),
+		documentLengths: make([]float64, 0, len(candidates)),
+		documentFreq:    make(map[string]int),
+	}
+	var totalLength float64
+	for _, candidate := range candidates {
+		frequencies, length := weightedDocumentTokens(candidate.document, profile)
+		corpus.documents = append(corpus.documents, frequencies)
+		corpus.documentLengths = append(corpus.documentLengths, length)
+		totalLength += length
+		for token := range frequencies {
+			corpus.documentFreq[token]++
+		}
+	}
+	if len(corpus.documentLengths) > 0 {
+		corpus.averageDocLength = totalLength / float64(len(corpus.documentLengths))
+	}
+	return corpus
+}
+
+func (c keywordCorpus) score(queryTokens []string, documentIndex int) float64 {
+	if c.averageDocLength <= 0 || documentIndex < 0 || documentIndex >= len(c.documents) {
+		return 0
+	}
+	frequencies := c.documents[documentIndex]
+	documentLength := c.documentLengths[documentIndex]
+	if len(frequencies) == 0 || documentLength <= 0 {
+		return 0
+	}
+	var score float64
+	for _, token := range uniqueStrings(queryTokens) {
+		termFrequency := frequencies[token]
+		if termFrequency <= 0 {
+			continue
+		}
+		documentFrequency := c.documentFreq[token]
+		if documentFrequency <= 0 {
+			continue
+		}
+		inverseDocumentFrequency := math.Log(1 + (float64(len(c.documents))-float64(documentFrequency)+0.5)/
+			(float64(documentFrequency)+0.5))
+		normalizedLength := documentLength / c.averageDocLength
+		denominator := termFrequency + bm25K1*(1-bm25B+bm25B*normalizedLength)
+		score += inverseDocumentFrequency * (termFrequency * (bm25K1 + 1) / denominator)
+	}
+	if score <= 0 {
+		return 0
+	}
+	return score / (score + 1)
+}
+
+func weightedDocumentTokens(document Document, profile string) (map[string]float64, float64) {
+	weights := keywordFieldWeightsForProfile(profile)
+	fields := weightedFieldsForDocument(document, weights)
+	frequencies := make(map[string]float64)
+	var length float64
+	for _, field := range fields {
+		if field.weight <= 0 || strings.TrimSpace(field.text) == "" {
+			continue
+		}
+		for _, token := range tokenizeSearchTextAll(field.text) {
+			frequencies[token] += field.weight
+			length += field.weight
+		}
+	}
+	return frequencies, length
+}
+
+func weightedFieldsForDocument(document Document, weights keywordFieldWeights) []weightedSearchField {
+	fields := []weightedSearchField{
+		{text: document.Content, weight: weights.Content},
+		{text: document.RelativePath, weight: weights.RelativePath},
+		{text: document.FileExtension, weight: weights.FileExtension},
+		{text: document.Language, weight: weights.Language},
+	}
+	usedMetadata := make(map[string]struct{}, len(weights.Metadata))
+	for key, weight := range weights.Metadata {
+		fields = append(fields, weightedSearchField{text: document.Metadata[key], weight: weight})
+		usedMetadata[key] = struct{}{}
+	}
+	for key, value := range document.Metadata {
+		if _, ok := usedMetadata[key]; ok {
+			continue
+		}
+		fields = append(fields, weightedSearchField{text: value, weight: weights.DefaultMetadata})
+	}
+	return fields
+}
+
+func keywordFieldWeightsForProfile(profile string) keywordFieldWeights {
+	switch profile {
+	case KeywordProfileCode:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    2.0,
+			FileExtension:   0.4,
+			Language:        0.4,
+			DefaultMetadata: 0.5,
+			Metadata: map[string]float64{
+				metadataSymbolName:     3.0,
+				metadataSymbolKind:     1.2,
+				metadataChunkKind:      0.5,
+				MetadataDomainPath:     0.8,
+				MetadataExperienceKind: 0.4,
+			},
+		}
+	case KeywordProfileKnowledge:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    0.6,
+			FileExtension:   0.2,
+			Language:        0.2,
+			DefaultMetadata: 0.4,
+			Metadata: map[string]float64{
+				MetadataHeadingPath:   2.0,
+				MetadataDocumentID:    1.0,
+				MetadataSectionID:     0.8,
+				MetadataKnowledgeKind: 0.6,
+				MetadataNodeKind:      0.3,
+				MetadataVersion:       0.2,
+			},
+		}
+	case KeywordProfileConversation:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    0.1,
+			FileExtension:   0.0,
+			Language:        0.0,
+			DefaultMetadata: 0.2,
+			Metadata: map[string]float64{
+				metadataRole:       0.2,
+				MetadataDomainPath: 0.4,
+			},
+		}
+	case KeywordProfileExperience:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    0.2,
+			FileExtension:   0.0,
+			Language:        0.0,
+			DefaultMetadata: 0.4,
+			Metadata: map[string]float64{
+				MetadataDomainPath:     1.4,
+				MetadataExperienceKind: 1.2,
+				metadataTags:           1.0,
+			},
+		}
+	case KeywordProfilePreference:
+		return keywordFieldWeights{
+			Content:         1.2,
+			RelativePath:    0.1,
+			FileExtension:   0.0,
+			Language:        0.0,
+			DefaultMetadata: 0.3,
+			Metadata: map[string]float64{
+				MetadataDomainPath: 0.8,
+				metadataTags:       0.6,
+			},
+		}
+	case KeywordProfileToolHistory:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    0.2,
+			FileExtension:   0.0,
+			Language:        0.0,
+			DefaultMetadata: 0.4,
+			Metadata: map[string]float64{
+				metadataToolName:   1.5,
+				metadataCommand:    0.8,
+				metadataStatus:     0.8,
+				MetadataDomainPath: 0.6,
+			},
+		}
+	case KeywordProfileFact:
+		return keywordFieldWeights{
+			Content:         1.1,
+			RelativePath:    0.1,
+			FileExtension:   0.0,
+			Language:        0.0,
+			DefaultMetadata: 0.4,
+			Metadata: map[string]float64{
+				MetadataDomainPath: 0.8,
+			},
+		}
+	default:
+		return keywordFieldWeights{
+			Content:         1.0,
+			RelativePath:    0.4,
+			FileExtension:   0.1,
+			Language:        0.1,
+			DefaultMetadata: 0.3,
+			Metadata:        map[string]float64{},
+		}
+	}
+}
+
+func normalizeKeywordProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case KeywordProfileCode:
+		return KeywordProfileCode
+	case KeywordProfileKnowledge:
+		return KeywordProfileKnowledge
+	case KeywordProfileConversation:
+		return KeywordProfileConversation
+	case KeywordProfileExperience:
+		return KeywordProfileExperience
+	case KeywordProfilePreference:
+		return KeywordProfilePreference
+	case KeywordProfileToolHistory:
+		return KeywordProfileToolHistory
+	case KeywordProfileFact:
+		return KeywordProfileFact
+	default:
+		return KeywordProfileDefault
+	}
+}
+
+func searchFusionMode(options SearchOptions) string {
+	if strings.EqualFold(strings.TrimSpace(options.FusionMode), SearchFusionRRF) {
+		return SearchFusionRRF
+	}
+	return SearchFusionLinear
 }
 
 func tokenizeSearchText(text string) []string {
+	return uniqueStrings(tokenizeSearchTextAll(text))
+}
+
+func tokenizeSearchTextAll(text string) []string {
 	tokens := make([]string, 0)
 	var builder strings.Builder
 	flush := func() {
@@ -308,7 +654,7 @@ func tokenizeSearchText(text string) []string {
 		previous = current
 	}
 	flush()
-	return uniqueStrings(tokens)
+	return tokens
 }
 
 func uniqueStrings(values []string) []string {

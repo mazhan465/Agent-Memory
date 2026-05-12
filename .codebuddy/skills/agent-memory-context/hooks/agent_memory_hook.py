@@ -31,6 +31,26 @@ KNOWLEDGE_TRIGGER_TERMS = (
     "导入知识库", "加入知识库", "放入知识库", "写入知识库", "收录到知识库", "当作知识库", "作为知识库",
     "import knowledge", "ingest knowledge", "add to knowledge base", "import into knowledge base",
 )
+PROJECT_PATH_PAYLOAD_KEYS = (
+    "project_dir", "project_dirs", "project_path", "project_paths", "workspace_dir", "workspace_dirs",
+    "workspace_folders", "workspaceFolders", "target_repo", "target_repos", "target_path", "target_paths",
+)
+PROJECT_DOC_EXTENSIONS = {".md", ".markdown"}
+PROJECT_DOC_IGNORE_DIRS = {
+    ".git", ".hg", ".svn", ".idea", ".vscode", ".cache", ".codebuddy", ".codex",
+    "node_modules", "vendor", "dist", "build", "target", "tmp", "temp", "coverage",
+}
+CONVERSATION_DOC_TERMS = (
+    "conversation", "chat", "transcript", "dialogue", "discussion", "meeting notes",
+    "对话", "聊天记录", "会话", "会议纪要", "讨论记录", "user:", "assistant:", "用户：", "助手：",
+)
+EXPERIENCE_DOC_TERMS = (
+    "experience", "lesson", "lessons", "troubleshooting", "postmortem", "runbook", "best practice",
+    "implemented", "resolved", "fixed", "solution", "经验", "教训", "排查", "故障", "复盘", "解决",
+    "修复", "方案", "实践", "最佳实践", "踩坑", "使用", "安装", "部署", "架构",
+)
+DEFAULT_PROJECT_DOC_MAX_FILES = 80
+DEFAULT_PROJECT_DOC_MAX_BYTES = 256 * 1024
 
 
 def main() -> int:
@@ -47,18 +67,20 @@ def main() -> int:
             prompt = str(payload.get("prompt") or "").strip()
             if not prompt:
                 return emit_json(event_name, additional_context="Agent-Memory hook skipped: empty prompt")
-            ensure_indexed(root)
+            targets = project_index_targets(root, payload, prompt)
+            index_summary = ensure_indexed_targets(root, targets)
             remember_prompt(root, payload, prompt)
             import_summary = import_prompt_knowledge(root, payload, prompt)
-            context = search_prompt_context(root, payload, prompt)
-            if import_summary:
-                context = import_summary + "\n\n" + context
-            return emit_json(event_name, additional_context=context)
+            context = search_prompt_context(root, payload, prompt, targets)
+            context_parts = [part for part in (index_summary, import_summary, context) if part]
+            return emit_json(event_name, additional_context="\n\n".join(context_parts))
         if args.mode == "session-start":
-            summary = ensure_indexed(root, sync_when_indexed=True)
+            targets = project_index_targets(root, payload, "")
+            summary = ensure_indexed_targets(root, targets, sync_when_indexed=True)
             return emit_json(event_name, additional_context=f"Agent-Memory context loop active. {summary}")
         memory_summary = persist_session_memory(root, payload)
-        summary = ensure_indexed(root, sync_when_indexed=True)
+        targets = project_index_targets(root, payload, "")
+        summary = ensure_indexed_targets(root, targets, sync_when_indexed=True)
         additional_context = f"{memory_summary} {summary}".strip()
         return emit_json(event_name, additional_context=additional_context, suppress=True)
     except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -117,6 +139,9 @@ def code_context_prefix(root: Path) -> list[str]:
         return shlex.split(configured)
 
     exe = ".exe" if platform.system().lower() == "windows" else ""
+    if (root / "cmd" / "code-context").is_dir() and (root / "go.mod").exists():
+        return ["go", "run", "./cmd/code-context"]
+
     candidate_paths = [
         root / "bin" / f"code-context{exe}",
         default_install_root() / "bin" / f"code-context{exe}",
@@ -128,9 +153,6 @@ def code_context_prefix(root: Path) -> list[str]:
     found = shutil.which(f"code-context{exe}") or shutil.which("code-context")
     if found:
         return [found]
-
-    if (root / "cmd" / "code-context").is_dir() and (root / "go.mod").exists():
-        return ["go", "run", "./cmd/code-context"]
 
     return [f"code-context{exe}"]
 
@@ -163,25 +185,39 @@ def hook_timeout_seconds() -> int:
     return DEFAULT_TIMEOUT_SECONDS
 
 
-def ensure_indexed(root: Path, sync_when_indexed: bool = False) -> str:
-    status = run_code_context(root, ["status", str(root)])
+def ensure_indexed_targets(root: Path, targets: list[Path], sync_when_indexed: bool = False) -> str:
+    summaries: list[str] = []
+    for target in dedupe_paths([root, *targets]):
+        summary = ensure_indexed(root, target, sync_when_indexed=sync_when_indexed)
+        if summary:
+            summaries.append(summary)
+    return "\n".join(summaries)
+
+
+def ensure_indexed(root: Path, target: Path | None = None, sync_when_indexed: bool = False) -> str:
+    target_path = (target or root).expanduser().resolve()
+    status = run_code_context(root, ["status", str(target_path)])
     status_text = (status.stdout + status.stderr).strip()
     if status.returncode != 0:
         raise RuntimeError(compact_text(status_text) or "status command failed")
 
     if "status=not_indexed" in status.stdout:
-        indexed = run_code_context(root, ["index", str(root)])
+        indexed = run_code_context(root, ["index", str(target_path)])
         if indexed.returncode != 0:
             raise RuntimeError(compact_text(indexed.stderr or indexed.stdout) or "index command failed")
-        return compact_text(indexed.stdout)
+        return combine_summaries(compact_text(indexed.stdout), import_project_markdown_memory(root, target_path))
 
     if sync_when_indexed:
-        synced = run_code_context(root, ["sync", str(root)])
+        synced = run_code_context(root, ["sync", str(target_path)])
         if synced.returncode != 0:
             raise RuntimeError(compact_text(synced.stderr or synced.stdout) or "sync command failed")
-        return compact_text(synced.stdout)
+        return combine_summaries(compact_text(synced.stdout), import_project_markdown_memory(root, target_path))
 
-    return compact_text(status.stdout)
+    return combine_summaries(compact_text(status.stdout), import_project_markdown_memory(root, target_path))
+
+
+def combine_summaries(*parts: str) -> str:
+    return " ".join(part for part in parts if part).strip()
 
 
 def remember_prompt(root: Path, payload: dict[str, Any], prompt: str) -> None:
@@ -196,6 +232,283 @@ def remember_prompt(root: Path, payload: dict[str, Any], prompt: str) -> None:
         messages.append(message)
     state["session_messages"] = messages[-60:]
     save_state(root, payload, state)
+
+
+def project_index_targets(root: Path, payload: dict[str, Any], prompt: str) -> list[Path]:
+    root = root.expanduser().resolve()
+    targets: list[Path] = [root]
+    for raw_path in configured_project_paths():
+        add_project_target(root, targets, raw_path)
+    for raw_path in payload_project_paths(payload):
+        add_project_target(root, targets, raw_path)
+    for raw_path in extract_candidate_paths(prompt):
+        add_project_target(root, targets, raw_path)
+    return dedupe_paths(targets)
+
+
+def configured_project_paths() -> list[str]:
+    raw = os.environ.get("AGENT_MEMORY_PROJECT_DIRS") or os.environ.get("AGENT_MEMORY_EXTRA_PROJECT_DIRS") or ""
+    return [part.strip() for part in re.split(r"[,\n]", raw) if part.strip()]
+
+
+def payload_project_paths(payload: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    for key in PROJECT_PATH_PAYLOAD_KEYS:
+        values.extend(flatten_path_values(payload.get(key)))
+    return values
+
+
+def flatten_path_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        values: list[str] = []
+        for item in value:
+            values.extend(flatten_path_values(item))
+        return values
+    if isinstance(value, dict):
+        values: list[str] = []
+        for key in ("path", "root", "folder", "cwd", "uri"):
+            values.extend(flatten_path_values(value.get(key)))
+        return values
+    return []
+
+
+def add_project_target(root: Path, targets: list[Path], raw_path: str) -> None:
+    path = resolve_prompt_path(root, file_uri_to_path(raw_path))
+    if not path or not path.exists():
+        return
+    target = project_directory_for_path(path)
+    if target and target.is_dir():
+        targets.append(target)
+
+
+def file_uri_to_path(value: str) -> str:
+    if value.startswith("file://"):
+        return value[7:]
+    return value
+
+
+def project_directory_for_path(path: Path) -> Path | None:
+    if path.is_dir():
+        return path.resolve()
+    if path.is_file():
+        return nearest_project_root(path.parent) or path.parent.resolve()
+    return None
+
+
+def nearest_project_root(start: Path) -> Path | None:
+    markers = {".git", "go.mod", "package.json", "pyproject.toml", "Cargo.toml", "pom.xml", "README.md"}
+    current = start.resolve()
+    for parent in (current, *current.parents):
+        if any((parent / marker).exists() for marker in markers):
+            return parent
+    return None
+
+
+def import_project_markdown_memory(root: Path, target: Path) -> str:
+    paths = project_markdown_paths(target)
+    if not paths:
+        return ""
+    fingerprint = project_markdown_fingerprint(target, paths)
+    if project_markdown_import_is_current(target, fingerprint):
+        return ""
+
+    records_by_type: dict[str, list[dict[str, Any]]] = {"conversation": [], "experience": []}
+    for path in paths:
+        text = read_project_markdown_text(path)
+        if not text.strip():
+            continue
+        source_type = classify_markdown_memory_type(path, target, text)
+        records = records_by_type[source_type]
+        records.append(project_markdown_memory_record(source_type, target, path, text, len(records)))
+
+    imported: list[str] = []
+    previous_types = project_markdown_previous_import_types(target)
+    for source_type, records in records_by_type.items():
+        if not records and source_type not in previous_types:
+            continue
+        path = write_project_markdown_memory_import_file(target, source_type, records)
+        source_id = project_markdown_source_id(target, source_type)
+        result = run_code_context(root, ["import", "memory", source_type, str(path), source_id])
+        if result.returncode != 0:
+            message = compact_text(result.stderr or result.stdout) or f"import project {source_type} markdown failed"
+            raise RuntimeError(message)
+        imported.append(f"{source_type}={len(records)}")
+    if not imported:
+        return ""
+    save_project_markdown_import_manifest(target, fingerprint, imported)
+    return f"Agent-Memory project Markdown imported path={target}: " + ", ".join(imported) + "."
+
+
+def project_markdown_paths(target: Path) -> list[Path]:
+    paths: list[Path] = []
+    max_files = positive_int_env("AGENT_MEMORY_PROJECT_DOC_MAX_FILES", DEFAULT_PROJECT_DOC_MAX_FILES)
+    for current_root, dirnames, filenames in os.walk(target):
+        dirnames[:] = [name for name in dirnames if not should_skip_project_doc_dir(name)]
+        for filename in filenames:
+            path = Path(current_root) / filename
+            if path.suffix.lower() in PROJECT_DOC_EXTENSIONS:
+                paths.append(path)
+    paths.sort(key=project_markdown_sort_key)
+    return paths[:max_files]
+
+
+def should_skip_project_doc_dir(name: str) -> bool:
+    return name in PROJECT_DOC_IGNORE_DIRS or name.startswith(".")
+
+
+def project_markdown_fingerprint(target: Path, paths: list[Path]) -> str:
+    hasher = hashlib.sha256()
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        hasher.update(relative_project_path(target, path).encode("utf-8"))
+        hasher.update(str(stat.st_size).encode("utf-8"))
+        hasher.update(str(stat.st_mtime_ns).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def project_markdown_import_is_current(target: Path, fingerprint: str) -> bool:
+    manifest = read_project_markdown_import_manifest(target)
+    return manifest.get("fingerprint") == fingerprint
+
+
+def project_markdown_previous_import_types(target: Path) -> set[str]:
+    imported = read_project_markdown_import_manifest(target).get("imported")
+    if not isinstance(imported, list):
+        return set()
+    types: set[str] = set()
+    for item in imported:
+        if not isinstance(item, str):
+            continue
+        source_type = item.split("=", 1)[0].strip()
+        if source_type:
+            types.add(source_type)
+    return types
+
+
+def read_project_markdown_import_manifest(target: Path) -> dict[str, Any]:
+    path = project_markdown_import_manifest_path(target)
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def save_project_markdown_import_manifest(target: Path, fingerprint: str, imported: list[str]) -> None:
+    path = project_markdown_import_manifest_path(target)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    value = {
+        "fingerprint": fingerprint,
+        "imported": imported,
+        "updated_at": utc_now(),
+    }
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def project_markdown_import_manifest_path(target: Path) -> Path:
+    return state_base_dir() / "project-doc-imports" / project_markdown_session_key(target) / "manifest.json"
+
+
+def project_markdown_sort_key(path: Path) -> tuple[int, str]:
+    filename = path.name.lower()
+    priority = 0 if filename in {"readme.md", "readme.markdown"} else 1
+    return priority, filepath_key(path)
+
+
+def filepath_key(path: Path) -> str:
+    return filepath_to_slash(str(path))
+
+
+def read_project_markdown_text(path: Path) -> str:
+    max_bytes = positive_int_env("AGENT_MEMORY_PROJECT_DOC_MAX_BYTES", DEFAULT_PROJECT_DOC_MAX_BYTES)
+    try:
+        data = path.read_bytes()[: max_bytes + 1]
+    except OSError:
+        return ""
+    text = data[:max_bytes].decode("utf-8", errors="replace")
+    if len(data) > max_bytes:
+        text += "\n\n[Agent-Memory project markdown truncated]\n"
+    return text
+
+
+def classify_markdown_memory_type(path: Path, target: Path, text: str) -> str:
+    relative_path = relative_project_path(target, path).lower()
+    content = f"{relative_path}\n{text[:12000]}".lower()
+    conversation_score = term_score(content, CONVERSATION_DOC_TERMS)
+    experience_score = term_score(content, EXPERIENCE_DOC_TERMS)
+    if conversation_score > experience_score:
+        return "conversation"
+    return "experience"
+
+
+def term_score(text: str, terms: tuple[str, ...]) -> int:
+    return sum(text.count(term.lower()) for term in terms)
+
+
+def project_markdown_memory_record(
+    source_type: str,
+    target: Path,
+    path: Path,
+    text: str,
+    index: int,
+) -> dict[str, Any]:
+    relative_path = relative_project_path(target, path)
+    doc_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    content = f"Project Markdown document: {relative_path}\nProject path: {target}\n\n{text}".strip()
+    record = memory_record(source_type, project_markdown_session_key(target), content, index, role="document")
+    record["id"] = f"project-doc-{doc_hash}-{hashlib.sha256(relative_path.encode('utf-8')).hexdigest()[:8]}"
+    record["tags"] = ["auto_project_doc", source_type, "agent_memory_hook"]
+    record["metadata"].update({
+        "extractor": "agent_memory_project_docs",
+        "project_path": filepath_key(target),
+        "relative_path": relative_path,
+        "document_kind": "readme" if path.name.lower().startswith("readme") else "markdown",
+        "document_hash": doc_hash,
+    })
+    return record
+
+
+def write_project_markdown_memory_import_file(
+    target: Path,
+    source_type: str,
+    records: list[dict[str, Any]],
+) -> Path:
+    directory = state_base_dir() / "project-doc-imports" / project_markdown_session_key(target)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{source_type}.jsonl"
+    content = "\n".join(json.dumps(record, ensure_ascii=False, sort_keys=True) for record in records)
+    path.write_text(content + "\n", encoding="utf-8")
+    return path
+
+
+def project_markdown_source_id(target: Path, source_type: str) -> str:
+    return f"project-docs-{hashlib.sha256(str(target).encode('utf-8')).hexdigest()[:16]}-{source_type}"
+
+
+def project_markdown_session_key(target: Path) -> str:
+    return "project-docs-" + hashlib.sha256(str(target).encode("utf-8")).hexdigest()[:16]
+
+
+def relative_project_path(target: Path, path: Path) -> str:
+    try:
+        return filepath_to_slash(str(path.relative_to(target)))
+    except ValueError:
+        return filepath_key(path)
+
+
+def filepath_to_slash(value: str) -> str:
+    return value.replace(os.sep, "/")
 
 
 def persist_session_memory(root: Path, payload: dict[str, Any]) -> str:
@@ -711,30 +1024,65 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def search_prompt_context(root: Path, payload: dict[str, Any], prompt: str) -> str:
+def search_prompt_context(root: Path, payload: dict[str, Any], prompt: str, targets: list[Path] | None = None) -> str:
     state = load_state(root, payload)
     session_id = str(state.get("agent_memory_session_id") or "").strip()
     search_types = choose_search_types(prompt)
     limit = positive_int_env("AGENT_MEMORY_HOOK_SEARCH_LIMIT", DEFAULT_LIMIT)
+    contexts: list[str] = []
 
-    args = ["search", str(root), prompt, str(limit), search_types]
-    if session_id:
-        args.append(f"--session-id={session_id}")
+    for index, target in enumerate(dedupe_paths([root, *(targets or [])])):
+        target_search_types = search_types_for_target(search_types, index)
+        for planned_search_types in search_type_plan(target_search_types):
+            args = ["search", str(target), prompt, str(limit), planned_search_types]
+            if session_id:
+                args.append(f"--session-id={session_id}")
 
-    result = run_code_context(root, args)
-    if result.returncode != 0 and "not indexed" in (result.stderr + result.stdout).lower():
-        ensure_indexed(root)
-        result = run_code_context(root, args)
-    if result.returncode != 0:
-        raise RuntimeError(compact_text(result.stderr or result.stdout) or "search command failed")
+            result = run_code_context(root, args)
+            if result.returncode != 0 and "not indexed" in (result.stderr + result.stdout).lower():
+                ensure_indexed(root, target)
+                result = run_code_context(root, args)
+            if result.returncode != 0:
+                raise RuntimeError(compact_text(result.stderr or result.stdout) or "search command failed")
 
-    response = json.loads(result.stdout)
-    returned_session_id = str(response.get("session_id") or "").strip()
-    if returned_session_id:
-        state["agent_memory_session_id"] = returned_session_id
-        save_state(root, payload, state)
+            response = json.loads(result.stdout)
+            returned_session_id = str(response.get("session_id") or "").strip()
+            if returned_session_id:
+                session_id = returned_session_id
+                state["agent_memory_session_id"] = returned_session_id
+                save_state(root, payload, state)
+            contexts.append(format_search_context(target, prompt, planned_search_types, response))
 
-    return format_search_context(root, prompt, search_types, response)
+    return "\n\n".join(contexts)
+
+
+def search_types_for_target(search_types: str, target_index: int) -> str:
+    if target_index == 0:
+        return search_types
+    values = split_search_types(search_types)
+    if "all" in values or "code" in values:
+        return "code"
+    return search_types
+
+
+def search_type_plan(search_types: str) -> list[str]:
+    values = split_search_type_values(search_types)
+    if not values or "all" in values:
+        return ["code", "doc"]
+    if "code" not in values:
+        return [search_types]
+    doc_values = [value for value in values if value != "code"]
+    if not doc_values:
+        return ["code"]
+    return ["code", ",".join(doc_values)]
+
+
+def split_search_types(value: str) -> set[str]:
+    return set(split_search_type_values(value))
+
+
+def split_search_type_values(value: str) -> list[str]:
+    return [part.strip().lower() for part in re.split(r"[,|]", value) if part.strip()]
 
 
 def choose_search_types(prompt: str) -> str:
@@ -759,12 +1107,10 @@ def choose_search_types(prompt: str) -> str:
     has_broad = contains_any(text, broad_terms)
 
     if has_broad or sum([has_knowledge, has_memory, has_code]) != 1:
-        return "all"
+        return "code,doc"
     if has_code:
         return "code"
-    if has_knowledge:
-        return "knowledge"
-    return "conversation,experience,preference,tool_history,fact"
+    return "doc"
 
 
 def contains_any(text: str, terms: tuple[str, ...]) -> bool:

@@ -371,6 +371,8 @@ func (s *Server) callSearchCode(ctx context.Context, rawArgs json.RawMessage) (c
 		Query:          args.Query,
 		SemanticWeight: strategy.SemanticWeight,
 		KeywordWeight:  strategy.KeywordWeight,
+		KeywordProfile: vectorstore.KeywordProfileCode,
+		FusionMode:     vectorstore.SearchFusionRRF,
 	})
 	if err != nil {
 		if os.IsNotExist(err) {

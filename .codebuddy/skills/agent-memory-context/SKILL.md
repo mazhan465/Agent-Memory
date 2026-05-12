@@ -28,29 +28,31 @@ Treat the following workflow as non-optional whenever working in a repository us
 4. Use that `session_id` on later searches so Agent-Memory can deduplicate results already returned.
 5. At the end of the assistant turn/session, persist the session history into Agent-Memory as `conversation` memory.
 6. At the same end step, extract stable `experience`, `preference`, `tool_history`, and `fact` records from the session and import them under the matching source types.
-7. Run incremental indexing so changed files are searchable in the next turn.
-8. If the index is missing, run a full `index` before searching or syncing.
-9. If hooks are available, rely on hooks for start/search and end/sync; otherwise execute the workflow manually and keep the rule in persistent project instructions.
-10. Treat `knowledge` as manually curated content only: import it when the user explicitly asks to add a document/path/link to the knowledge base.
+7. Automatically index project directories explicitly requested by the user in prompts, payload workspace fields, or `AGENT_MEMORY_PROJECT_DIRS` / `AGENT_MEMORY_EXTRA_PROJECT_DIRS`.
+8. When indexing or syncing a project, automatically scan `README.md`, `README.markdown`, and other Markdown files under that project; classify them by content and import them as `conversation` or `experience` memory, not as manual `knowledge`.
+9. Run incremental indexing so changed files are searchable in the next turn.
+10. If the index is missing, run a full `index` before searching or syncing.
+11. If hooks are available, rely on hooks for start/search and end/sync; otherwise execute the workflow manually and keep the rule in persistent project instructions.
+12. Treat `knowledge` as manually curated content only: import it when the user explicitly asks to add a document/path/link to the knowledge base.
 
 ## Search Scope Selection
 
 Choose the narrowest useful search scope from the prompt intent:
 
 - Use `code` for implementation, debugging, refactoring, tests, functions, packages, CLI behavior, MCP tools, or compile errors.
-- Use `knowledge` for README, design docs, module docs, project rules, usage guides, architecture, or skill instructions.
-- Use `experience,conversation,preference,tool_history,fact` for prior decisions, lessons learned, user preferences, historical fixes, and operational context.
-- Use `all` for mixed tasks, unclear prompts, broad planning, or repository onboarding.
+- Use `doc` for all non-code context, including README/design/module docs/project rules/usage guides plus `knowledge`, `conversation`, `experience`, `preference`, `tool_history`, and `fact` sources.
+- Use `knowledge` only when you explicitly need manually imported document or external knowledge sources instead of all non-code memory.
+- For mixed tasks, unclear prompts, broad planning, or repository onboarding, run `code` and `doc` as separate searches by default instead of one combined `all` search.
 
-Prefer one strong query plus one narrowed follow-up query over many low-signal searches. Reuse the same `session_id` for all of them.
+Prefer one strong query plus one narrowed follow-up query over many low-signal searches. Reuse the same `session_id` across the separated `code` and `doc` searches.
 
 ## CLI Workflow
 
 Use the repository root as `<repo>`.
 
 ```bash
-code-context search <repo> "<query>" 8 all
-code-context search <repo> "<query>" 8 code --session-id=<session_id>
+code-context search <repo> "<query>" 8 code
+code-context search <repo> "<query>" 8 doc --session-id=<session_id>
 code-context sync <repo>
 ```
 

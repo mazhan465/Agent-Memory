@@ -367,9 +367,10 @@ func writeIndexingConfig(builder *strings.Builder, cfg Config) {
 func writeSearchConfig(builder *strings.Builder, cfg Config) {
 	builder.WriteString("# 搜索配置。\n")
 	builder.WriteString("# default_types 可选项：\n")
-	builder.WriteString("# all、code、knowledge、conversation、experience、preference、tool_history、fact。\n")
+	builder.WriteString("# all、code、doc、knowledge、conversation、experience、preference、tool_history、fact。\n")
 	builder.WriteString("# - all: 同时搜索代码和所有已导入来源。\n")
 	builder.WriteString("# - code: 只搜索当前代码库索引。\n")
+	builder.WriteString("# - doc: 搜索所有非 code 来源，包括 knowledge、conversation、experience、preference、tool_history 和 fact。\n")
 	builder.WriteString("# - knowledge: 搜索文档知识和外部知识来源。\n")
 	builder.WriteString("# - conversation: 搜索历史对话。\n")
 	builder.WriteString("# - experience: 搜索经验记忆。\n")

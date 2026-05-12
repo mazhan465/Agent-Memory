@@ -28,6 +28,32 @@ const (
 	MetadataVersion = "version"
 )
 
+const (
+	// SearchFusionLinear 表示语义分和关键词分按权重线性融合。
+	SearchFusionLinear = "linear"
+	// SearchFusionRRF 表示语义排序和关键词排序按 RRF 融合。
+	SearchFusionRRF = "rrf"
+)
+
+const (
+	// KeywordProfileDefault 表示通用关键词字段权重。
+	KeywordProfileDefault = "default"
+	// KeywordProfileCode 表示代码搜索关键词字段权重，强调路径和符号。
+	KeywordProfileCode = "code"
+	// KeywordProfileKnowledge 表示文档知识搜索关键词字段权重，强调标题和章节。
+	KeywordProfileKnowledge = "knowledge"
+	// KeywordProfileConversation 表示历史对话搜索关键词字段权重，避免元数据过强。
+	KeywordProfileConversation = "conversation"
+	// KeywordProfileExperience 表示经验记忆搜索关键词字段权重，强调领域和经验类型。
+	KeywordProfileExperience = "experience"
+	// KeywordProfilePreference 表示用户偏好搜索关键词字段权重，强调偏好内容本身。
+	KeywordProfilePreference = "preference"
+	// KeywordProfileToolHistory 表示工具历史搜索关键词字段权重，强调工具名和执行信息。
+	KeywordProfileToolHistory = "tool_history"
+	// KeywordProfileFact 表示事实记忆搜索关键词字段权重，强调事实内容本身。
+	KeywordProfileFact = "fact"
+)
+
 // Document 表示一条已向量化的代码片段。
 type Document struct {
 	ID            string            `json:"id"`
@@ -48,6 +74,8 @@ type SearchOptions struct {
 	Query                string
 	SemanticWeight       float64
 	KeywordWeight        float64
+	KeywordProfile       string
+	FusionMode           string
 	ExtensionFilters     []string
 	DomainFilters        []string
 	DocumentFilters      []string

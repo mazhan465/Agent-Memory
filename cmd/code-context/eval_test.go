@@ -39,6 +39,22 @@ func TestReadRecallEvalCasesJSONL(t *testing.T) {
 	}
 }
 
+func TestReadRecallEvalCasesSingleJSONLObject(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "single.jsonl")
+	content := `{"id":"one","query":"OrderRepository","expected":[{"relative_path":"internal/order/repository.go"}]}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cases, err := readRecallEvalCases(path)
+	if err != nil {
+		t.Fatalf("readRecallEvalCases() error = %v", err)
+	}
+	if len(cases) != 1 || cases[0].caseID() != "one" {
+		t.Fatalf("cases = %+v, want one JSONL case", cases)
+	}
+}
+
 func TestReadRecallEvalCasesSupportsSWEBenchDataset(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "swe.json")
 	content := `{
@@ -148,8 +164,22 @@ func TestEvaluateRecallUsesSearchResults(t *testing.T) {
 	if response.MeanPrecision != 0.5 || response.MeanFilePrecision != 0.5 || response.MeanFileRecall != 1 {
 		t.Fatalf("precision metrics = %+v, want generic/file precision 0.5 and file recall 1", response)
 	}
+	if response.TotalResultCount != 2 || response.MeanResultCount != 2 || response.TotalDedupedCount != 0 {
+		t.Fatalf("result efficiency metrics = %+v, want two results and no dedupe", response)
+	}
+	if response.TotalResultCharacters != 61 || response.TotalEstimatedResultTokens != 16 {
+		t.Fatalf("context budget metrics chars=%d tokens=%d, want 61/16",
+			response.TotalResultCharacters, response.TotalEstimatedResultTokens)
+	}
+	if response.MeanSearchedNamespaces != 1 || response.TotalLatencyMS < 0 || response.P95LatencyMS < 0 {
+		t.Fatalf("runtime metrics = %+v, want one namespace and non-negative latency", response)
+	}
 	if response.Cases[0].FirstHitRank != 1 || response.Cases[0].TopResults[0].RelativePath != "internal/order/repository.go" {
 		t.Fatalf("case result = %+v, want order repository at rank 1", response.Cases[0])
+	}
+	if response.Cases[0].ResultCharacters != 61 || response.Cases[0].EstimatedResultTokens != 16 ||
+		response.Cases[0].SearchedNamespaceCount != 1 || response.Cases[0].TopResults[0].EstimatedTokens != 7 {
+		t.Fatalf("case efficiency metrics = %+v, want chars/tokens/namespaces populated", response.Cases[0])
 	}
 	if _, err := os.Stat(filepath.Join(storageDir, "sessions")); !os.IsNotExist(err) {
 		t.Fatalf("sessions dir stat error = %v, want not exist because eval disables sessions", err)

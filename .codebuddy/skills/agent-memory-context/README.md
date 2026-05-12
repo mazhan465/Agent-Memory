@@ -62,15 +62,17 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
 
 ## Runtime Memory Flow
 
-- Prompt time: cache the user prompt, import `knowledge` only when the user explicitly asks to add a document, path, or link to the knowledge base, then search Agent-Memory.
-- Turn/session end: persist session history as `conversation`, extract `experience`, `preference`, `tool_history`, and `fact`, then run incremental sync.
+- Prompt time: cache the user prompt, auto-index project directories explicitly mentioned by the user or configured through `AGENT_MEMORY_PROJECT_DIRS` / `AGENT_MEMORY_EXTRA_PROJECT_DIRS`, import changed project Markdown as `conversation` / `experience`, import `knowledge` only when the user explicitly asks to add a document, path, or link to the knowledge base, then search Agent-Memory. Mixed or broad prompts search `code` and `doc` separately by default; `doc` means all non-code sources.
+- Project indexing: after `index` / `sync`, scan `README.md`, `README.markdown`, and other Markdown files under the project (skipping ignored dependency/build/config directories), classify conversation-like docs as `conversation` and solution/usage/lesson-like docs as `experience`, and import only when the Markdown fingerprint changes.
+- Turn/session end: persist session history as `conversation`, extract `experience`, `preference`, `tool_history`, and `fact`, then run incremental sync for the current repository and configured extra project directories.
 
 ## Manual Runtime Commands
 
 If hooks are disabled, run manually:
 
 ```bash
-code-context search <repo> "<query>" 8 all
+code-context search <repo> "<query>" 8 code
+code-context search <repo> "<query>" 8 doc --session-id=<session_id>
 code-context import memory experience <json-or-jsonl-path> <source-id>
 code-context sync <repo>
 ```

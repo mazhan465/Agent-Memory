@@ -9,6 +9,7 @@ package vectorstore
 import (
 	"testing"
 
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
@@ -87,5 +88,69 @@ func TestDocumentDimension(t *testing.T) {
 	_, err := documentDimension([]Document{{Vector: []float32{1}}, {Vector: []float32{1, 2}}})
 	if err == nil {
 		t.Fatal("documentDimension() error = nil, want dimension mismatch error")
+	}
+}
+
+func TestMilvusSearchLimitExpandsForRerank(t *testing.T) {
+	limit := milvusSearchLimit(5, SearchOptions{Query: "OrderWriter", FusionMode: SearchFusionRRF})
+	if limit != 15 {
+		t.Fatalf("milvusSearchLimit() = %d, want 15", limit)
+	}
+
+	limit = milvusSearchLimit(5, SearchOptions{})
+	if limit != 5 {
+		t.Fatalf("milvusSearchLimit() without query = %d, want 5", limit)
+	}
+}
+
+func TestDocumentColumnsPreserveSearchMetadata(t *testing.T) {
+	columns := columnsByName(documentColumns([]Document{
+		{
+			ID:            "doc-1",
+			Namespace:     "code_chunks_abc123",
+			Vector:        []float32{1, 0},
+			Content:       "content",
+			RelativePath:  "internal/order/writer.go",
+			FileExtension: ".go",
+			Language:      "go",
+			Metadata: map[string]string{
+				MetadataExperienceKind: "domain",
+				metadataSymbolName:     "OrderWriter",
+				metadataSymbolKind:     "struct",
+				metadataChunkKind:      "syntax_node",
+				metadataRole:           "assistant",
+				metadataToolName:       "go test",
+				metadataCommand:        "go test ./...",
+				metadataStatus:         "success",
+				metadataTags:           "go,test",
+			},
+		},
+	}))
+
+	for field, want := range map[string]string{
+		milvusFieldExperienceKind: "domain",
+		milvusFieldSymbolName:     "OrderWriter",
+		milvusFieldSymbolKind:     "struct",
+		milvusFieldChunkKind:      "syntax_node",
+		milvusFieldRole:           "assistant",
+		milvusFieldToolName:       "go test",
+		milvusFieldCommand:        "go test ./...",
+		milvusFieldStatus:         "success",
+		milvusFieldTags:           "go,test",
+	} {
+		got, err := columnString(columns, field, 0)
+		if err != nil {
+			t.Fatalf("columnString(%s) error = %v", field, err)
+		}
+		if got != want {
+			t.Fatalf("columnString(%s) = %q, want %q", field, got, want)
+		}
+	}
+}
+
+func TestMilvusSearchResultsRejectsScoreCountMismatch(t *testing.T) {
+	_, err := milvusSearchResults([]client.SearchResult{{ResultCount: 1, Scores: nil}})
+	if err == nil {
+		t.Fatal("milvusSearchResults() error = nil, want score count mismatch")
 	}
 }

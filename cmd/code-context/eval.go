@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const evalRecordLineBufferSize = 1024 * 1024
@@ -74,58 +75,76 @@ type recallExpectedResult struct {
 }
 
 type recallEvalResponse struct {
-	RootPath          string                 `json:"root_path"`
-	CasesPath         string                 `json:"cases_path"`
-	Limit             int                    `json:"limit"`
-	Types             string                 `json:"types"`
-	CaseCount         int                    `json:"case_count"`
-	PassedCount       int                    `json:"passed_count"`
-	FailedCount       int                    `json:"failed_count"`
-	HitRate           float64                `json:"hit_rate"`
-	MeanPrecision     float64                `json:"mean_precision"`
-	MeanRecall        float64                `json:"mean_recall"`
-	MeanF1            float64                `json:"mean_f1"`
-	MRR               float64                `json:"mrr"`
-	MeanNDCG          float64                `json:"mean_ndcg"`
-	FileMetricCases   int                    `json:"file_metric_cases,omitempty"`
-	MeanFilePrecision float64                `json:"mean_file_precision,omitempty"`
-	MeanFileRecall    float64                `json:"mean_file_recall,omitempty"`
-	MeanFileF1        float64                `json:"mean_file_f1,omitempty"`
-	AverageHitRank    float64                `json:"average_hit_rank,omitempty"`
-	Cases             []recallEvalCaseResult `json:"cases"`
+	RootPath                   string                 `json:"root_path"`
+	CasesPath                  string                 `json:"cases_path"`
+	Limit                      int                    `json:"limit"`
+	Types                      string                 `json:"types"`
+	CaseCount                  int                    `json:"case_count"`
+	PassedCount                int                    `json:"passed_count"`
+	FailedCount                int                    `json:"failed_count"`
+	HitRate                    float64                `json:"hit_rate"`
+	MeanPrecision              float64                `json:"mean_precision"`
+	MeanRecall                 float64                `json:"mean_recall"`
+	MeanF1                     float64                `json:"mean_f1"`
+	MRR                        float64                `json:"mrr"`
+	MeanNDCG                   float64                `json:"mean_ndcg"`
+	FileMetricCases            int                    `json:"file_metric_cases,omitempty"`
+	MeanFilePrecision          float64                `json:"mean_file_precision,omitempty"`
+	MeanFileRecall             float64                `json:"mean_file_recall,omitempty"`
+	MeanFileF1                 float64                `json:"mean_file_f1,omitempty"`
+	AverageHitRank             float64                `json:"average_hit_rank,omitempty"`
+	TotalLatencyMS             float64                `json:"total_latency_ms"`
+	MeanLatencyMS              float64                `json:"mean_latency_ms"`
+	P95LatencyMS               float64                `json:"p95_latency_ms"`
+	TotalEstimatedResultTokens int                    `json:"total_estimated_result_tokens"`
+	MeanEstimatedResultTokens  float64                `json:"mean_estimated_result_tokens"`
+	TotalResultCharacters      int                    `json:"total_result_characters"`
+	MeanResultCharacters       float64                `json:"mean_result_characters"`
+	TotalResultCount           int                    `json:"total_result_count"`
+	MeanResultCount            float64                `json:"mean_result_count"`
+	TotalDedupedCount          int                    `json:"total_deduped_count"`
+	MeanSearchedNamespaces     float64                `json:"mean_searched_namespaces"`
+	Cases                      []recallEvalCaseResult `json:"cases"`
 }
 
 type recallEvalCaseResult struct {
-	ID                string                `json:"id,omitempty"`
-	Query             string                `json:"query"`
-	Limit             int                   `json:"limit"`
-	Types             string                `json:"types"`
-	ExpectedCount     int                   `json:"expected_count"`
-	MatchedExpected   int                   `json:"matched_expected"`
-	MatchedResults    int                   `json:"matched_results"`
-	Matched           bool                  `json:"matched"`
-	Precision         float64               `json:"precision"`
-	Recall            float64               `json:"recall"`
-	F1                float64               `json:"f1"`
-	NDCG              float64               `json:"ndcg"`
-	FilePrecision     float64               `json:"file_precision,omitempty"`
-	FileRecall        float64               `json:"file_recall,omitempty"`
-	FileF1            float64               `json:"file_f1,omitempty"`
-	FirstHitRank      int                   `json:"first_hit_rank,omitempty"`
-	ReciprocalRank    float64               `json:"reciprocal_rank"`
-	ResultCount       int                   `json:"result_count"`
-	SearchedNamespace []searchJSONNamespace `json:"searched_namespaces"`
-	TopResults        []recallEvalTopResult `json:"top_results"`
+	ID                     string                `json:"id,omitempty"`
+	Query                  string                `json:"query"`
+	Limit                  int                   `json:"limit"`
+	Types                  string                `json:"types"`
+	ExpectedCount          int                   `json:"expected_count"`
+	MatchedExpected        int                   `json:"matched_expected"`
+	MatchedResults         int                   `json:"matched_results"`
+	Matched                bool                  `json:"matched"`
+	Precision              float64               `json:"precision"`
+	Recall                 float64               `json:"recall"`
+	F1                     float64               `json:"f1"`
+	NDCG                   float64               `json:"ndcg"`
+	FilePrecision          float64               `json:"file_precision,omitempty"`
+	FileRecall             float64               `json:"file_recall,omitempty"`
+	FileF1                 float64               `json:"file_f1,omitempty"`
+	FirstHitRank           int                   `json:"first_hit_rank,omitempty"`
+	ReciprocalRank         float64               `json:"reciprocal_rank"`
+	ResultCount            int                   `json:"result_count"`
+	DedupedCount           int                   `json:"deduped_count"`
+	LatencyMS              float64               `json:"latency_ms"`
+	EstimatedResultTokens  int                   `json:"estimated_result_tokens"`
+	ResultCharacters       int                   `json:"result_characters"`
+	SearchedNamespace      []searchJSONNamespace `json:"searched_namespaces"`
+	SearchedNamespaceCount int                   `json:"searched_namespace_count"`
+	TopResults             []recallEvalTopResult `json:"top_results"`
 }
 
 type recallEvalTopResult struct {
-	Rank         int     `json:"rank"`
-	ResultID     string  `json:"result_id"`
-	Category     string  `json:"category"`
-	SourceType   string  `json:"source_type"`
-	SourceID     string  `json:"source_id,omitempty"`
-	RelativePath string  `json:"relative_path,omitempty"`
-	Score        float64 `json:"score"`
+	Rank            int     `json:"rank"`
+	ResultID        string  `json:"result_id"`
+	Category        string  `json:"category"`
+	SourceType      string  `json:"source_type"`
+	SourceID        string  `json:"source_id,omitempty"`
+	RelativePath    string  `json:"relative_path,omitempty"`
+	Score           float64 `json:"score"`
+	ContentChars    int     `json:"content_chars"`
+	EstimatedTokens int     `json:"estimated_tokens"`
 }
 
 func (a *app) runEval(ctx context.Context, args []string) error {
@@ -223,7 +242,14 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 	var filePrecisionSum float64
 	var fileRecallSum float64
 	var fileF1Sum float64
+	var latencySum float64
+	var estimatedTokenSum int
+	var resultCharacterSum int
+	var resultCountSum int
+	var dedupedCountSum int
+	var searchedNamespaceSum int
 	var hitRankSum int
+	latencies := make([]float64, 0, len(cases))
 	for _, testCase := range cases {
 		caseResult, err := a.evaluateRecallCase(ctx, request, testCase)
 		if err != nil {
@@ -235,6 +261,13 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 		f1Sum += caseResult.F1
 		reciprocalRankSum += caseResult.ReciprocalRank
 		ndcgSum += caseResult.NDCG
+		latencySum += caseResult.LatencyMS
+		latencies = append(latencies, caseResult.LatencyMS)
+		estimatedTokenSum += caseResult.EstimatedResultTokens
+		resultCharacterSum += caseResult.ResultCharacters
+		resultCountSum += caseResult.ResultCount
+		dedupedCountSum += caseResult.DedupedCount
+		searchedNamespaceSum += caseResult.SearchedNamespaceCount
 		if hasFileExpectations(testCase.expectedResults()) {
 			response.FileMetricCases++
 			filePrecisionSum += caseResult.FilePrecision
@@ -263,6 +296,19 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 	if response.PassedCount > 0 {
 		response.AverageHitRank = float64(hitRankSum) / float64(response.PassedCount)
 	}
+	if response.CaseCount > 0 {
+		response.TotalLatencyMS = latencySum
+		response.MeanLatencyMS = latencySum / float64(response.CaseCount)
+		response.P95LatencyMS = percentileFloat64(latencies, 0.95)
+		response.TotalEstimatedResultTokens = estimatedTokenSum
+		response.MeanEstimatedResultTokens = float64(estimatedTokenSum) / float64(response.CaseCount)
+		response.TotalResultCharacters = resultCharacterSum
+		response.MeanResultCharacters = float64(resultCharacterSum) / float64(response.CaseCount)
+		response.TotalResultCount = resultCountSum
+		response.MeanResultCount = float64(resultCountSum) / float64(response.CaseCount)
+		response.TotalDedupedCount = dedupedCountSum
+		response.MeanSearchedNamespaces = float64(searchedNamespaceSum) / float64(response.CaseCount)
+	}
 	return response, nil
 }
 
@@ -279,6 +325,7 @@ func (a *app) evaluateRecallCase(
 	if err != nil {
 		return recallEvalCaseResult{}, err
 	}
+	startedAt := time.Now()
 	searchResponse, err := a.searchAll(ctx, searchRequestOptions{
 		RootPath:       request.RootPath,
 		Query:          query,
@@ -286,10 +333,11 @@ func (a *app) evaluateRecallCase(
 		Selection:      selection,
 		DisableSession: true,
 	})
+	latencyMS := float64(time.Since(startedAt)) / float64(time.Millisecond)
 	if err != nil {
 		return recallEvalCaseResult{}, err
 	}
-	return evaluateRecallCaseResult(testCase, expected, query, limit, types, searchResponse), nil
+	return evaluateRecallCaseResult(testCase, expected, query, limit, types, searchResponse, latencyMS), nil
 }
 
 func evaluateRecallCaseResult(
@@ -299,6 +347,7 @@ func evaluateRecallCaseResult(
 	limit int,
 	types string,
 	searchResponse searchJSONResponse,
+	latencyMS float64,
 ) recallEvalCaseResult {
 	matchedExpected := make(map[int]struct{}, len(expected))
 	matchedResults := make(map[int]struct{}, len(searchResponse.Results))
@@ -324,18 +373,23 @@ func evaluateRecallCaseResult(
 		}
 	}
 	caseResult := recallEvalCaseResult{
-		ID:                testCase.caseID(),
-		Query:             query,
-		Limit:             limit,
-		Types:             types,
-		ExpectedCount:     len(expected),
-		MatchedExpected:   len(matchedExpected),
-		MatchedResults:    len(matchedResults),
-		Matched:           firstHitRank > 0,
-		FirstHitRank:      firstHitRank,
-		ResultCount:       searchResponse.ResultCount,
-		SearchedNamespace: searchResponse.SearchedNamespaces,
-		TopResults:        topRecallEvalResults(searchResponse.Results),
+		ID:                     testCase.caseID(),
+		Query:                  query,
+		Limit:                  limit,
+		Types:                  types,
+		ExpectedCount:          len(expected),
+		MatchedExpected:        len(matchedExpected),
+		MatchedResults:         len(matchedResults),
+		Matched:                firstHitRank > 0,
+		FirstHitRank:           firstHitRank,
+		ResultCount:            searchResponse.ResultCount,
+		DedupedCount:           searchResponse.DedupedCount,
+		LatencyMS:              latencyMS,
+		EstimatedResultTokens:  estimatedSearchResultTokens(searchResponse.Results),
+		ResultCharacters:       searchResultCharacters(searchResponse.Results),
+		SearchedNamespace:      searchResponse.SearchedNamespaces,
+		SearchedNamespaceCount: len(searchResponse.SearchedNamespaces),
+		TopResults:             topRecallEvalResults(searchResponse.Results),
 	}
 	if len(searchResponse.Results) > 0 {
 		caseResult.Precision = float64(caseResult.MatchedResults) / float64(len(searchResponse.Results))
@@ -535,13 +589,15 @@ func topRecallEvalResults(results []searchJSONResult) []recallEvalTopResult {
 	items := make([]recallEvalTopResult, 0, len(results))
 	for _, result := range results {
 		items = append(items, recallEvalTopResult{
-			Rank:         result.Rank,
-			ResultID:     result.ResultID,
-			Category:     result.Category,
-			SourceType:   result.SourceType,
-			SourceID:     result.SourceID,
-			RelativePath: result.Location.RelativePath,
-			Score:        result.Score,
+			Rank:            result.Rank,
+			ResultID:        result.ResultID,
+			Category:        result.Category,
+			SourceType:      result.SourceType,
+			SourceID:        result.SourceID,
+			RelativePath:    result.Location.RelativePath,
+			Score:           result.Score,
+			ContentChars:    len([]rune(result.Content)),
+			EstimatedTokens: estimateTextTokens(result.Content),
 		})
 	}
 	return items
@@ -571,7 +627,10 @@ func readRecallEvalCases(path string) ([]recallEvalCase, error) {
 		if len(dataset.Instances) > 0 {
 			return validateRecallEvalCases(dataset.Instances)
 		}
-		return validateRecallEvalCases(dataset.Cases)
+		if len(dataset.Cases) > 0 {
+			return validateRecallEvalCases(dataset.Cases)
+		}
+		return readRecallEvalJSONL(trimmed)
 	default:
 		return readRecallEvalJSONL(trimmed)
 	}

@@ -96,6 +96,18 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	}
 }
 
+func TestDefaultCodeSearchStrategyPrefersKeywords(t *testing.T) {
+	setIsolatedHome(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
+	if codeStrategy.SemanticWeight != 0.3 || codeStrategy.KeywordWeight != 0.7 {
+		t.Fatalf("code strategy = %+v, want semantic=0.3 keyword=0.7", codeStrategy)
+	}
+}
+
 func TestLoadConfigFromYAMLFile(t *testing.T) {
 	setIsolatedHome(t)
 	configPath := filepath.Join(t.TempDir(), "config.yaml")

@@ -72,3 +72,36 @@ func TestParseSearchArgsUsesConfiguredDefaultTypes(t *testing.T) {
 		t.Fatalf("Selection.Labels = %v, want [code experience]", options.Selection.Labels)
 	}
 }
+
+func TestSearchTypeSelectionDocIncludesNonCodeSources(t *testing.T) {
+	selection, err := newSearchTypeSelection("doc")
+	if err != nil {
+		t.Fatalf("newSearchTypeSelection() error = %v", err)
+	}
+	if selection.All || selection.Code {
+		t.Fatalf("selection = %+v, want doc without all/code", selection)
+	}
+	wantSourceTypes := []contextdoc.SourceType{
+		contextdoc.SourceTypeDocument,
+		contextdoc.SourceTypeExternalKnowledge,
+		contextdoc.SourceTypeConversation,
+		contextdoc.SourceTypeExperience,
+		contextdoc.SourceTypePreference,
+		contextdoc.SourceTypeToolHistory,
+		contextdoc.SourceTypeFact,
+	}
+	if len(selection.SourceTypes) != len(wantSourceTypes) {
+		t.Fatalf("SourceTypes = %v, want %d non-code source types", selection.SourceTypes, len(wantSourceTypes))
+	}
+	for _, sourceType := range wantSourceTypes {
+		if _, ok := selection.SourceTypes[sourceType]; !ok {
+			t.Fatalf("SourceTypes does not contain %s: %v", sourceType, selection.SourceTypes)
+		}
+	}
+	if !slices.Equal(selection.Labels, []string{"doc"}) {
+		t.Fatalf("Labels = %v, want [doc]", selection.Labels)
+	}
+	if !isSearchTypeArg("doc") {
+		t.Fatal("isSearchTypeArg(doc) = false, want true")
+	}
+}

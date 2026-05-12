@@ -191,8 +191,8 @@ Windows 默认保存到：
 如果 hooks 不可用，Agent 必须手动执行等价命令：
 
 ```bash
-code-context search <repo> "<query>" 8 all
-code-context search <repo> "<query>" 8 code --session-id=<session_id>
+code-context search <repo> "<query>" 8 code
+code-context search <repo> "<query>" 8 doc --session-id=<session_id>
 code-context sync <repo>
 ```
 
