@@ -18,8 +18,9 @@
 - OpenAI-compatible Embedder（通过环境变量启用真实语义向量）
 - Ollama Embedder（通过本地 Ollama `/api/embed` 启用本地语义向量）
 - 本地混合检索基础能力：在向量相似度基础上融合查询关键词、路径和符号元数据命中分数，并按代码、知识库、历史会话、用户偏好等来源类型配置权重
+- 召回质量评估基础能力：通过 JSON/JSONL 评估集计算 hit rate、mean recall、MRR 和命中排名
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
-- CLI：`index`、`sync`、`search`、`import knowledge`、`import memory`、`source list`、`source clear`、`config init`、`config path`、`clear`、`status`
+- CLI：`index`、`sync`、`search`、`eval recall`、`import knowledge`、`import memory`、`source list`、`source clear`、`config init`、`config path`、`clear`、`status`
 - MCP stdio Server：提供 `index_codebase`、`search_code`、`clear_index`、`get_indexing_status` 工具入口
 - 模块化接口：后续可替换为 Ollama Embedder 和 Milvus VectorStore
 - 长期记忆设计：后续支持历史会话、工具记录、用户偏好和会话启动上下文构建
@@ -65,6 +66,12 @@ export AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS='private/**,*.backup'
 ./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge session-dev
 # 或使用显式参数
 ./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
+
+# 使用 JSONL 评估集评估代码召回质量
+cat > /tmp/agent-memory-recall-eval.jsonl <<'EOF'
+{"id":"auth","query":"authenticate user token","expected":[{"relative_path":"auth.go"}]}
+EOF
+./bin/code-context eval recall /path/to/repo /tmp/agent-memory-recall-eval.jsonl 10 code
 
 # 查看状态
 ./bin/code-context status /path/to/repo

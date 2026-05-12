@@ -107,11 +107,12 @@ type searchTypeSelection struct {
 }
 
 type searchRequestOptions struct {
-	RootPath  string
-	Query     string
-	Limit     int
-	Selection searchTypeSelection
-	SessionID string
+	RootPath       string
+	Query          string
+	Limit          int
+	Selection      searchTypeSelection
+	SessionID      string
+	DisableSession bool
 }
 
 func (a *app) runSearch(ctx context.Context, args []string) error {
@@ -320,9 +321,13 @@ func (a *app) searchAll(ctx context.Context, request searchRequestOptions) (sear
 		return searchJSONResponse{}, err
 	}
 	sessionStore := newSearchSessionStore(a.config.StorageDir)
-	sessionState, err := sessionStore.LoadOrCreate(request.SessionID)
-	if err != nil {
-		return searchJSONResponse{}, err
+	sessionState := searchSessionState{}
+	if !request.DisableSession {
+		var err error
+		sessionState, err = sessionStore.LoadOrCreate(request.SessionID)
+		if err != nil {
+			return searchJSONResponse{}, err
+		}
 	}
 
 	response := searchJSONResponse{
@@ -350,14 +355,27 @@ func (a *app) searchAll(ctx context.Context, request searchRequestOptions) (sear
 	sort.SliceStable(results, func(i int, j int) bool {
 		return results[i].Result.Score > results[j].Result.Score
 	})
-	filteredResults, dedupedCount := filterSessionResults(&sessionState, results, request.Limit)
-	response.DedupedCount = dedupedCount
+	filteredResults := limitCategorizedResults(results, request.Limit)
+	if !request.DisableSession {
+		var dedupedCount int
+		filteredResults, dedupedCount = filterSessionResults(&sessionState, results, request.Limit)
+		response.DedupedCount = dedupedCount
+	}
 	response.Results = makeSearchJSONResults(filteredResults)
 	response.ResultCount = len(response.Results)
-	if err := sessionStore.Save(sessionState); err != nil {
-		return searchJSONResponse{}, err
+	if !request.DisableSession {
+		if err := sessionStore.Save(sessionState); err != nil {
+			return searchJSONResponse{}, err
+		}
 	}
 	return response, nil
+}
+
+func limitCategorizedResults(results []categorizedSearchResult, limit int) []categorizedSearchResult {
+	if limit > 0 && len(results) > limit {
+		return results[:limit]
+	}
+	return results
 }
 
 func searchCandidateLimit(limit int) int {

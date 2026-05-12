@@ -411,6 +411,7 @@
 - `import memory <type> <json-or-jsonl-path> [source-id]`：导入 `conversation`、`experience`、`preference`、`tool_history`、`fact` 等长期记忆 source
 - `source list [type]`：以 JSON 查看已导入 source
 - `source clear <type> <source-id>`：清理指定 source 的向量和 catalog 记录
+- `eval recall <path> <cases-json-or-jsonl> [limit] [types]`：基于评估集计算召回 hit rate、mean recall、MRR 和命中排名
 - `config init [--force]`：生成默认 YAML 配置文件
 - `config path`：输出默认配置文件路径
 - `status <path>`

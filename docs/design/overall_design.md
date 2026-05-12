@@ -528,4 +528,5 @@ chunk             原文细节片段
 16. 实现 `SessionContextBuilder`，支持会话开始和提示词到达时自动检索长期记忆与文档知识。
 17. 实现统一 tree-sitter 多语言 splitter，当前支持 Go 和 C++，后续扩展 JavaScript、TypeScript、Python 等语言。
 18. 实现增量索引和后台同步。
-19. 实现 dense + BM25 hybrid search、rerank 和上下文压缩。
+19. 实现召回质量评估命令，支持基于 JSON/JSONL 评估集计算 hit rate、mean recall 和 MRR。
+20. 实现 dense + BM25 hybrid search、rerank 和上下文压缩。

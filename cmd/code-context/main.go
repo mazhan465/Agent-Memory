@@ -75,6 +75,8 @@ func run(ctx context.Context, args []string) error {
 		return application.runImport(ctx, args[1:])
 	case "source":
 		return application.runSource(ctx, args[1:])
+	case "eval":
+		return application.runEval(ctx, args[1:])
 	case "status":
 		return application.runStatus(args[1:])
 	case "clear":
@@ -282,6 +284,7 @@ func printUsage() {
   code-context import memory <type> <json-or-jsonl-path> [source-id]
   code-context source list [type]
   code-context source clear <type> <source-id>
+  code-context eval recall <path> <cases-json-or-jsonl> [limit] [types]
   code-context config init [--force]
   code-context config path
   code-context status <path>
@@ -302,6 +305,7 @@ Examples:
   code-context search . "project rules" knowledge
   code-context search . "previous fix" 5 conversation,experience session-dev
   code-context search . "project rules" --session-id=session-dev
+  code-context eval recall . ./eval_cases.jsonl 10 code
   code-context import knowledge ./docs project-docs
   code-context import memory experience ./memories.jsonl team-experience
   code-context source list knowledge`)

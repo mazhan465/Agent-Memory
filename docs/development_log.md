@@ -1129,3 +1129,39 @@
 
 - 增加 `import_knowledge`、`search_agent_memory` 和统一 prompt context 工具入口。
 - 将 CLI 和 MCP 共用的应用组装逻辑沉淀到内部 runtime 包，减少工厂方法重复。
+
+## 2026-05-12 召回质量评估基础能力
+
+### 目标
+
+补齐搜索召回质量的离线评估入口，让后续调整 embedding、切块、关键词权重、领域过滤和 rerank 策略时，可以通过固定评估集观察 hit rate、mean recall 和 MRR 等指标变化。
+
+### 方案
+
+- CLI 新增 `eval recall <path> <cases-json-or-jsonl> [limit] [types]`。
+- 评估集支持 JSON 数组和 JSONL，每条 case 包含 `query` 和 `expected` / `expected_results`。
+- 期望结果可按 `result_id`、`content_hash`、`relative_path`、行号区间、source 信息、文档元数据、`domain_path`、`content_contains` 和自定义 metadata 匹配。
+- 评估时复用统一 `searchAll` 搜索入口，但关闭 session 去重，避免历史搜索状态影响评估指标。
+- 输出汇总指标：`hit_rate`、`mean_recall`、`mrr`、`average_hit_rank`，并返回每个 case 的命中详情和 Top 结果摘要。
+
+### 模块影响
+
+- `cmd/code-context/eval.go`：新增召回评估命令、评估集读取、期望结果匹配和指标计算。
+- `cmd/code-context/search.go`：`searchRequestOptions` 增加 `DisableSession`，评估场景跳过 session 读写。
+- `cmd/code-context/main.go`：注册 `eval` 命令并更新 usage。
+- `cmd/code-context/eval_test.go`：新增 JSONL 读取、搜索评估和匹配规则测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/development_log.md`：同步更新说明。
+
+### 验证方式
+
+- `gofmt -w cmd/code-context/eval.go cmd/code-context/eval_test.go cmd/code-context/search.go cmd/code-context/main.go`
+- `go test ./cmd/code-context`
+- `go test ./...`
+- `GOOS=linux GOARCH=amd64 go build -o /tmp/agent-memory-code-context ./cmd/code-context`
+- `git diff --check`
+
+### 后续计划
+
+- 增加评估集生成辅助命令，从现有搜索结果中半自动生成 golden case。
+- 增加分类型、分 source、分 namespace 的指标聚合。
+- 后续接入 rerank 后补充 nDCG、precision@k 和 rerank 前后对比。
