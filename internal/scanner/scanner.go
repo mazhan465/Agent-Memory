@@ -19,9 +19,11 @@ import (
 
 // File 表示一个可索引文件。
 type File struct {
-	AbsolutePath string
-	RelativePath string
-	Extension    string
+	AbsolutePath    string
+	RelativePath    string
+	Extension       string
+	Size            int64
+	ModTimeUnixNano int64
 }
 
 // Scanner 负责根据扩展名和忽略规则扫描文件。
@@ -88,11 +90,17 @@ func (s *Scanner) Scan(rootPath string) ([]File, error) {
 		if _, ok := s.supportedExts[ext]; !ok {
 			return nil
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
 
 		files = append(files, File{
-			AbsolutePath: currentPath,
-			RelativePath: relativePath,
-			Extension:    ext,
+			AbsolutePath:    currentPath,
+			RelativePath:    relativePath,
+			Extension:       ext,
+			Size:            info.Size(),
+			ModTimeUnixNano: info.ModTime().UnixNano(),
 		})
 		return nil
 	}

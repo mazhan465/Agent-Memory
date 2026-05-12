@@ -41,6 +41,9 @@ func TestScannerScanUsesIgnoreFilesAndPatterns(t *testing.T) {
 		if got[index] != want[index] {
 			t.Fatalf("files = %v, want %v", got, want)
 		}
+		if files[index].Size <= 0 || files[index].ModTimeUnixNano <= 0 {
+			t.Fatalf("file metadata = %+v, want positive size and mod time", files[index])
+		}
 	}
 }
 

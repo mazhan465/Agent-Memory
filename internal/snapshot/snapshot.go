@@ -29,16 +29,24 @@ const (
 	StatusFailed Status = "failed"
 )
 
+// FileState 表示单个文件的增量索引快照。
+type FileState struct {
+	Hash            string `json:"hash"`
+	Size            int64  `json:"size"`
+	ModTimeUnixNano int64  `json:"mod_time_unix_nano"`
+}
+
 // Info 表示一个代码库的索引快照。
 type Info struct {
-	Path         string            `json:"path"`
-	Namespace    string            `json:"namespace"`
-	Status       Status            `json:"status"`
-	IndexedFiles int               `json:"indexed_files"`
-	TotalChunks  int               `json:"total_chunks"`
-	FileHashes   map[string]string `json:"file_hashes,omitempty"`
-	ErrorMessage string            `json:"error_message,omitempty"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	Path         string               `json:"path"`
+	Namespace    string               `json:"namespace"`
+	Status       Status               `json:"status"`
+	IndexedFiles int                  `json:"indexed_files"`
+	TotalChunks  int                  `json:"total_chunks"`
+	FileHashes   map[string]string    `json:"file_hashes,omitempty"`
+	FileStates   map[string]FileState `json:"file_states,omitempty"`
+	ErrorMessage string               `json:"error_message,omitempty"`
+	UpdatedAt    time.Time            `json:"updated_at"`
 }
 
 // Store 管理快照读写。

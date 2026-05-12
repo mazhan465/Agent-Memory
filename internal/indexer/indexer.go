@@ -94,13 +94,13 @@ func (i *Indexer) Index(ctx context.Context, rootPath string) (Stats, error) {
 		i.saveFailure(namespace, absolutePath, err)
 		return Stats{}, err
 	}
-	fileDataList := readFileData(files)
-	fileHashes := fileHashMap(fileDataList)
 
 	if !hasIncrementalSnapshot {
-		return i.indexFull(ctx, namespace, absolutePath, fileDataList, fileHashes)
+		fileDataList := readFileData(files)
+		fileStates := fileStateMap(fileDataList)
+		return i.indexFull(ctx, namespace, absolutePath, fileDataList, fileHashesFromStates(fileStates), fileStates)
 	}
-	return i.indexIncremental(ctx, namespace, absolutePath, previousInfo, fileDataList, fileHashes)
+	return i.indexIncremental(ctx, namespace, absolutePath, previousInfo, files)
 }
 
 func (i *Indexer) markIndexing(namespace string, absolutePath string) error {
@@ -119,7 +119,8 @@ func (i *Indexer) incrementalSnapshot(namespace string) (snapshot.Info, bool, er
 		}
 		return snapshot.Info{}, false, err
 	}
-	return info, len(info.FileHashes) > 0 && info.Status == snapshot.StatusIndexed, nil
+	hasFileSnapshot := len(info.FileStates) > 0 || len(info.FileHashes) > 0
+	return info, hasFileSnapshot && info.Status == snapshot.StatusIndexed, nil
 }
 
 func (i *Indexer) indexFull(
@@ -128,6 +129,7 @@ func (i *Indexer) indexFull(
 	absolutePath string,
 	fileDataList []fileData,
 	fileHashes map[string]string,
+	fileStates map[string]snapshot.FileState,
 ) (Stats, error) {
 	documents, err := i.buildDocuments(ctx, namespace, fileDataList)
 	if err != nil {
@@ -145,7 +147,7 @@ func (i *Indexer) indexFull(
 		TotalChunks:  len(documents),
 		FullReindex:  true,
 	}
-	if err := i.saveSuccess(stats, fileHashes); err != nil {
+	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
 		return Stats{}, err
 	}
 	return stats, nil
@@ -156,15 +158,43 @@ func (i *Indexer) indexIncremental(
 	namespace string,
 	absolutePath string,
 	previousInfo snapshot.Info,
-	fileDataList []fileData,
-	fileHashes map[string]string,
+	files []scanner.File,
 ) (Stats, error) {
-	changes := diffFileHashes(previousInfo.FileHashes, fileHashes)
+	if len(previousInfo.FileStates) == 0 {
+		return i.indexIncrementalFromHashes(ctx, namespace, absolutePath, previousInfo.FileHashes, files)
+	}
+	changes, fileStates, changedData := detectFileStateChanges(previousInfo.FileStates, files)
+	return i.applyIncrementalChanges(ctx, namespace, absolutePath, changes, fileStates, changedData)
+}
+
+func (i *Indexer) indexIncrementalFromHashes(
+	ctx context.Context,
+	namespace string,
+	absolutePath string,
+	previousHashes map[string]string,
+	files []scanner.File,
+) (Stats, error) {
+	fileDataList := readFileData(files)
+	fileStates := fileStateMap(fileDataList)
+	fileHashes := fileHashesFromStates(fileStates)
+	changes := diffFileHashes(previousHashes, fileHashes)
+	changedData := selectChangedFileData(fileDataList, changes.changedPaths())
+	return i.applyIncrementalChanges(ctx, namespace, absolutePath, changes, fileStates, changedData)
+}
+
+func (i *Indexer) applyIncrementalChanges(
+	ctx context.Context,
+	namespace string,
+	absolutePath string,
+	changes indexChanges,
+	fileStates map[string]snapshot.FileState,
+	changedData []fileData,
+) (Stats, error) {
+	fileHashes := fileHashesFromStates(fileStates)
 	if changes.empty() {
-		return i.saveNoChangeStats(ctx, namespace, absolutePath, fileHashes)
+		return i.saveNoChangeStats(ctx, namespace, absolutePath, fileHashes, fileStates)
 	}
 
-	changedData := selectChangedFileData(fileDataList, changes.changedPaths())
 	documents, err := i.buildDocuments(ctx, namespace, changedData)
 	if err != nil {
 		i.saveFailure(namespace, absolutePath, err)
@@ -188,7 +218,7 @@ func (i *Indexer) indexIncremental(
 		ModifiedFiles: len(changes.modified),
 		RemovedFiles:  len(changes.removed),
 	}
-	if err := i.saveSuccess(stats, fileHashes); err != nil {
+	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
 		return Stats{}, err
 	}
 	return stats, nil
@@ -199,6 +229,7 @@ func (i *Indexer) saveNoChangeStats(
 	namespace string,
 	absolutePath string,
 	fileHashes map[string]string,
+	fileStates map[string]snapshot.FileState,
 ) (Stats, error) {
 	totalChunks, err := i.vectorStore.Count(ctx, namespace)
 	if err != nil {
@@ -211,13 +242,17 @@ func (i *Indexer) saveNoChangeStats(
 		IndexedFiles: len(fileHashes),
 		TotalChunks:  totalChunks,
 	}
-	if err := i.saveSuccess(stats, fileHashes); err != nil {
+	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
 		return Stats{}, err
 	}
 	return stats, nil
 }
 
-func (i *Indexer) saveSuccess(stats Stats, fileHashes map[string]string) error {
+func (i *Indexer) saveSuccess(
+	stats Stats,
+	fileHashes map[string]string,
+	fileStates map[string]snapshot.FileState,
+) error {
 	return i.snapshotStore.Save(snapshot.Info{
 		Path:         stats.Path,
 		Namespace:    stats.Namespace,
@@ -225,6 +260,7 @@ func (i *Indexer) saveSuccess(stats Stats, fileHashes map[string]string) error {
 		IndexedFiles: stats.IndexedFiles,
 		TotalChunks:  stats.TotalChunks,
 		FileHashes:   maps.Clone(fileHashes),
+		FileStates:   maps.Clone(fileStates),
 	})
 }
 
@@ -341,12 +377,98 @@ func readFileData(files []scanner.File) []fileData {
 	return result
 }
 
-func fileHashMap(fileDataList []fileData) map[string]string {
-	hashes := make(map[string]string, len(fileDataList))
+func fileStateMap(fileDataList []fileData) map[string]snapshot.FileState {
+	states := make(map[string]snapshot.FileState, len(fileDataList))
 	for _, data := range fileDataList {
-		hashes[data.file.RelativePath] = data.hash
+		states[data.file.RelativePath] = fileState(data.file, data.hash)
+	}
+	return states
+}
+
+func scannedFileStateMap(files []scanner.File) map[string]snapshot.FileState {
+	states := make(map[string]snapshot.FileState, len(files))
+	for _, file := range files {
+		states[file.RelativePath] = fileState(file, "")
+	}
+	return states
+}
+
+func fileState(file scanner.File, hash string) snapshot.FileState {
+	return snapshot.FileState{
+		Hash:            hash,
+		Size:            file.Size,
+		ModTimeUnixNano: file.ModTimeUnixNano,
+	}
+}
+
+func fileHashesFromStates(states map[string]snapshot.FileState) map[string]string {
+	hashes := make(map[string]string, len(states))
+	for path, state := range states {
+		if state.Hash != "" {
+			hashes[path] = state.Hash
+		}
 	}
 	return hashes
+}
+
+func detectFileStateChanges(previous map[string]snapshot.FileState, files []scanner.File) (indexChanges, map[string]snapshot.FileState, []fileData) {
+	currentStates := scannedFileStateMap(files)
+	changes := indexChanges{}
+	readPaths := make([]string, 0)
+	for path, currentState := range currentStates {
+		previousState, ok := previous[path]
+		if !ok {
+			readPaths = append(readPaths, path)
+			continue
+		}
+		if sameFileMetadata(previousState, currentState) && previousState.Hash != "" {
+			currentState.Hash = previousState.Hash
+			currentStates[path] = currentState
+			continue
+		}
+		readPaths = append(readPaths, path)
+	}
+	for path := range previous {
+		if _, ok := currentStates[path]; !ok {
+			changes.removed = append(changes.removed, path)
+		}
+	}
+	sort.Strings(readPaths)
+
+	readDataByPath := make(map[string]fileData, len(readPaths))
+	for _, data := range readFileData(selectFiles(files, readPaths)) {
+		readDataByPath[data.file.RelativePath] = data
+	}
+	changedData := make([]fileData, 0, len(readDataByPath))
+	for _, path := range readPaths {
+		data, ok := readDataByPath[path]
+		if !ok {
+			if _, existed := previous[path]; existed {
+				changes.removed = append(changes.removed, path)
+			}
+			delete(currentStates, path)
+			continue
+		}
+		currentState := currentStates[path]
+		currentState.Hash = data.hash
+		currentStates[path] = currentState
+		previousState, existed := previous[path]
+		if !existed {
+			changes.added = append(changes.added, path)
+			changedData = append(changedData, data)
+			continue
+		}
+		if previousState.Hash != data.hash {
+			changes.modified = append(changes.modified, path)
+			changedData = append(changedData, data)
+		}
+	}
+	changes.sort()
+	return changes, currentStates, changedData
+}
+
+func sameFileMetadata(left snapshot.FileState, right snapshot.FileState) bool {
+	return left.Size == right.Size && left.ModTimeUnixNano == right.ModTimeUnixNano
 }
 
 func diffFileHashes(previous map[string]string, current map[string]string) indexChanges {
@@ -405,6 +527,20 @@ func selectChangedFileData(fileDataList []fileData, paths []string) []fileData {
 	for _, data := range fileDataList {
 		if _, ok := pathSet[data.file.RelativePath]; ok {
 			result = append(result, data)
+		}
+	}
+	return result
+}
+
+func selectFiles(files []scanner.File, paths []string) []scanner.File {
+	pathSet := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		pathSet[path] = struct{}{}
+	}
+	result := make([]scanner.File, 0, len(paths))
+	for _, file := range files {
+		if _, ok := pathSet[file.RelativePath]; ok {
+			result = append(result, file)
 		}
 	}
 	return result

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mazhan465/Agent-Memory/internal/embed"
 	"github.com/mazhan465/Agent-Memory/internal/scanner"
@@ -68,6 +69,126 @@ func TestIndexerIndexIncremental(t *testing.T) {
 	if count != 2 {
 		t.Fatalf("Count() = %d, want 2", count)
 	}
+}
+
+func TestIndexerIndexSkipsUnchangedFiles(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	storagePath := t.TempDir()
+	filePath := filepath.Join(repoPath, "a.go")
+	content := "package main\n\nfunc A() {}\n"
+	writeIndexerTestFile(t, filePath, content)
+
+	countingEmbedder := newCountingEmbedder(8)
+	indexer := New(
+		scanner.New([]string{".go"}, nil),
+		splitter.NewLineSplitter(20, 0),
+		countingEmbedder,
+		vectorstore.NewLocalStore(storagePath),
+		snapshot.NewStore(storagePath),
+	)
+	firstStats, err := indexer.Index(ctx, repoPath)
+	if err != nil {
+		t.Fatalf("Index() first error = %v", err)
+	}
+	if !firstStats.FullReindex || countingEmbedder.batchCalls != 1 {
+		t.Fatalf("first stats = %+v, batchCalls = %d, want full reindex and 1 embed batch", firstStats, countingEmbedder.batchCalls)
+	}
+
+	secondStats, err := indexer.Index(ctx, repoPath)
+	if err != nil {
+		t.Fatalf("Index() second error = %v", err)
+	}
+	if secondStats.AddedFiles != 0 || secondStats.ModifiedFiles != 0 || secondStats.RemovedFiles != 0 {
+		t.Fatalf("second stats changes = %+v, want no changes", secondStats)
+	}
+	if countingEmbedder.batchCalls != 1 {
+		t.Fatalf("batchCalls after no-change index = %d, want 1", countingEmbedder.batchCalls)
+	}
+
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(filePath, future, future); err != nil {
+		t.Fatalf("Chtimes() error = %v", err)
+	}
+	thirdStats, err := indexer.Index(ctx, repoPath)
+	if err != nil {
+		t.Fatalf("Index() third error = %v", err)
+	}
+	if thirdStats.AddedFiles != 0 || thirdStats.ModifiedFiles != 0 || thirdStats.RemovedFiles != 0 {
+		t.Fatalf("third stats changes = %+v, want no content changes", thirdStats)
+	}
+	if countingEmbedder.batchCalls != 1 {
+		t.Fatalf("batchCalls after same-content metadata change = %d, want 1", countingEmbedder.batchCalls)
+	}
+}
+
+func TestIndexerIndexMigratesHashSnapshotToFileStates(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	storagePath := t.TempDir()
+	writeIndexerTestFile(t, filepath.Join(repoPath, "a.go"), "package main\n\nfunc A() {}\n")
+
+	snapshotStore := snapshot.NewStore(storagePath)
+	indexer := New(
+		scanner.New([]string{".go"}, nil),
+		splitter.NewLineSplitter(20, 0),
+		embed.NewHashEmbedder(8),
+		vectorstore.NewLocalStore(storagePath),
+		snapshotStore,
+	)
+	firstStats, err := indexer.Index(ctx, repoPath)
+	if err != nil {
+		t.Fatalf("Index() first error = %v", err)
+	}
+	info, err := snapshotStore.Get(firstStats.Namespace)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	info.FileStates = nil
+	if err := snapshotStore.Save(info); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	secondStats, err := indexer.Index(ctx, repoPath)
+	if err != nil {
+		t.Fatalf("Index() second error = %v", err)
+	}
+	if secondStats.FullReindex || secondStats.AddedFiles != 0 || secondStats.ModifiedFiles != 0 || secondStats.RemovedFiles != 0 {
+		t.Fatalf("second stats = %+v, want incremental no changes", secondStats)
+	}
+	info, err = snapshotStore.Get(firstStats.Namespace)
+	if err != nil {
+		t.Fatalf("Get() migrated error = %v", err)
+	}
+	if len(info.FileStates) != 1 || info.FileStates["a.go"].Hash == "" {
+		t.Fatalf("FileStates = %+v, want migrated state for a.go", info.FileStates)
+	}
+}
+
+type countingEmbedder struct {
+	inner      *embed.HashEmbedder
+	batchCalls int
+}
+
+func newCountingEmbedder(dimension int) *countingEmbedder {
+	return &countingEmbedder{inner: embed.NewHashEmbedder(dimension)}
+}
+
+func (e *countingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	return e.inner.Embed(ctx, text)
+}
+
+func (e *countingEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	e.batchCalls++
+	return e.inner.EmbedBatch(ctx, texts)
+}
+
+func (e *countingEmbedder) Dimension() int {
+	return e.inner.Dimension()
+}
+
+func (e *countingEmbedder) Provider() string {
+	return e.inner.Provider()
 }
 
 func writeIndexerTestFile(t *testing.T, path string, content string) {
