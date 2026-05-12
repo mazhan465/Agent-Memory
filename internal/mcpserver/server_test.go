@@ -131,7 +131,7 @@ func writeTestCode(t *testing.T, repo string) {
 	content := []byte(`package auth
 
 func authenticateUser(token string) bool {
-	return token == "valid-token"
+	return token == "test-token-placeholder"
 }
 `)
 	if err := os.WriteFile(filepath.Join(repo, "auth.go"), content, 0o644); err != nil {

@@ -17,7 +17,7 @@ func TestOpenAIEmbedder_EmbedBatch(t *testing.T) {
 		if r.URL.Path != "/v1/embeddings" {
 			t.Fatalf("path = %s, want /v1/embeddings", r.URL.Path)
 		}
-		if r.Header.Get("Authorization") != "Bearer test-key" {
+		if r.Header.Get("Authorization") != "Bearer test-api-key-placeholder" {
 			t.Fatalf("authorization header is not set correctly")
 		}
 
@@ -42,7 +42,7 @@ func TestOpenAIEmbedder_EmbedBatch(t *testing.T) {
 
 	embedder, err := NewOpenAIEmbedder(OpenAIOptions{
 		BaseURL:    server.URL + "/v1",
-		APIKey:     "test-key",
+		APIKey:     "test-api-key-placeholder",
 		Model:      "test-model",
 		HTTPClient: server.Client(),
 	})
@@ -74,7 +74,7 @@ func TestOpenAIEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
 
 	embedder, err := NewOpenAIEmbedder(OpenAIOptions{
 		BaseURL:    server.URL,
-		APIKey:     "test-key",
+		APIKey:     "test-api-key-placeholder",
 		HTTPClient: server.Client(),
 	})
 	if err != nil {

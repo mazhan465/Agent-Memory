@@ -116,12 +116,12 @@
 - `go mod tidy`
 - `go test ./...`
 - `make build`
-- `AGENT_MEMORY_HOME=/Users/aaq/Desktop/project/Agent-Memory/bin/index-test ./bin/code-context index .`
-- `AGENT_MEMORY_HOME=/Users/aaq/Desktop/project/Agent-Memory/bin/index-test ./bin/code-context search . "Milvus vector store" 3`
-- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=21.91.243.205:19530 AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_test ./bin/code-context index .`
-- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=21.91.243.205:19530 AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_test ./bin/code-context search . "Milvus vector store" 3`
-- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=21.91.243.205:19530 AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_test ./bin/code-context clear .`
-- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=21.91.243.205:19530 AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_test ./bin/code-context search . "Milvus vector store" 3`，清理后返回 `no results`。
+- `AGENT_MEMORY_HOME=<repo-root>/bin/index-test ./bin/code-context index .`
+- `AGENT_MEMORY_HOME=<repo-root>/bin/index-test ./bin/code-context search . "Milvus vector store" 3`
+- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=<milvus-host>:19530 AGENT_MEMORY_MILVUS_COLLECTION=<milvus-collection> ./bin/code-context index .`
+- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=<milvus-host>:19530 AGENT_MEMORY_MILVUS_COLLECTION=<milvus-collection> ./bin/code-context search . "Milvus vector store" 3`
+- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=<milvus-host>:19530 AGENT_MEMORY_MILVUS_COLLECTION=<milvus-collection> ./bin/code-context clear .`
+- `AGENT_MEMORY_VECTOR_STORE=milvus AGENT_MEMORY_MILVUS_ADDRESS=<milvus-host>:19530 AGENT_MEMORY_MILVUS_COLLECTION=<milvus-collection> ./bin/code-context search . "Milvus vector store" 3`，清理后返回 `no results`。
 
 ### 后续计划
 
@@ -581,17 +581,17 @@
 
 ### 目标
 
-用户已将项目目录改为 `/Users/aaq/Desktop/project/Agent-Memory`。需要在新目录下工作，并修复旧项目名、旧 module path、旧默认存储目录和旧环境变量前缀残留造成的问题。
+用户已将项目目录改为 `<repo-root>`。需要在新目录下工作，并修复旧项目名、旧 module path、旧默认存储目录和旧环境变量前缀残留造成的问题。
 
 ### 方案
 
-- 将 Go module 从 `github.com/aaq/go-code-context` 更新为 `github.com/mazhan465/Agent-Memory`。
+- 将 Go module 从 `github.com/<old-owner>/go-code-context` 更新为 `github.com/<owner>/Agent-Memory`。
 - 将所有内部 import 路径同步到新 module path。
 - 将项目文档主名称更新为 `Agent-Memory`。
 - 将默认本地存储目录更新为 `~/.agent-memory`。
 - 将 Milvus 默认 collection 更新为 `agent_memory_chunks`。
 - 将环境变量前缀从 `GO_CODE_CONTEXT_` 更新为 `AGENT_MEMORY_`。
-- 在新目录 `/Users/aaq/Desktop/project/Agent-Memory` 下执行后续测试、编译和检查。
+- 在新目录 `<repo-root>` 下执行后续测试、编译和检查。
 - 为新目录启动 claude-context 索引，后续代码理解优先使用新目录索引。
 
 ### 模块影响

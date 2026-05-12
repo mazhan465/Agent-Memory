@@ -21,13 +21,13 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envVectorStoreProvider, "milvus")
 	t.Setenv(envEmbeddingDimension, "512")
 	t.Setenv(envOpenAIBaseURL, "https://example.com/v1")
-	t.Setenv(envOpenAIAPIKey, " test-key ")
+	t.Setenv(envOpenAIAPIKey, " test-api-key-placeholder ")
 	t.Setenv(envOpenAIEmbeddingModel, "text-embedding-test")
 	t.Setenv(envOllamaHost, " http://localhost:11434 ")
 	t.Setenv(envOllamaEmbeddingModel, "nomic-embed-text")
 	t.Setenv(envMilvusAddress, "127.0.0.1:19530")
-	t.Setenv(envMilvusUsername, " root ")
-	t.Setenv(envMilvusPassword, " password ")
+	t.Setenv(envMilvusUsername, " test-user ")
+	t.Setenv(envMilvusPassword, " test-password-placeholder ")
 	t.Setenv(envMilvusCollection, "test_collection")
 	t.Setenv(envCustomExtensions, "vue,.svelte")
 	t.Setenv(envCustomIgnorePatterns, "private/**,*.backup")
@@ -53,7 +53,7 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	if cfg.OpenAIBaseURL != "https://example.com/v1" {
 		t.Fatalf("OpenAIBaseURL = %s, want https://example.com/v1", cfg.OpenAIBaseURL)
 	}
-	if cfg.OpenAIAPIKey != "test-key" {
+	if cfg.OpenAIAPIKey != "test-api-key-placeholder" {
 		t.Fatalf("OpenAIAPIKey was not trimmed")
 	}
 	if cfg.OpenAIEmbeddingModel != "text-embedding-test" {
@@ -68,10 +68,10 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	if cfg.MilvusAddress != "127.0.0.1:19530" {
 		t.Fatalf("MilvusAddress = %s, want 127.0.0.1:19530", cfg.MilvusAddress)
 	}
-	if cfg.MilvusUsername != "root" {
+	if cfg.MilvusUsername != "test-user" {
 		t.Fatalf("MilvusUsername was not trimmed")
 	}
-	if cfg.MilvusPassword != "password" {
+	if cfg.MilvusPassword != "test-password-placeholder" {
 		t.Fatalf("MilvusPassword was not trimmed")
 	}
 	if cfg.MilvusCollection != "test_collection" {
@@ -117,7 +117,7 @@ embedding:
   dimension: 1024
   openai:
     base_url: https://example.com/v1
-    api_key: yaml-key
+    api_key: yaml-api-key-placeholder
     model: text-embedding-3-large
   ollama:
     host: http://localhost:11435
@@ -126,8 +126,8 @@ vector_store:
   provider: milvus
   milvus:
     address: 127.0.0.1:19530
-    username: root
-    password: yaml-password
+    username: test-user
+    password: yaml-password-placeholder
     collection: yaml_collection
 indexing:
   max_chunk_lines: 80
@@ -168,7 +168,7 @@ search:
 	if cfg.EmbeddingProvider != "openai" || cfg.EmbeddingDimension != 1024 {
 		t.Fatalf("embedding config = %s/%d, want openai/1024", cfg.EmbeddingProvider, cfg.EmbeddingDimension)
 	}
-	if cfg.OpenAIAPIKey != "yaml-key" || cfg.OpenAIEmbeddingModel != "text-embedding-3-large" {
+	if cfg.OpenAIAPIKey != "yaml-api-key-placeholder" || cfg.OpenAIEmbeddingModel != "text-embedding-3-large" {
 		t.Fatalf("openai config = key:%s model:%s", cfg.OpenAIAPIKey, cfg.OpenAIEmbeddingModel)
 	}
 	if cfg.VectorStoreProvider != "milvus" || cfg.MilvusCollection != "yaml_collection" {
