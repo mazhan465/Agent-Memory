@@ -7,7 +7,9 @@
 1. 用户提示进入模型前，先根据提示检索 Agent-Memory 上下文。
 2. 首次检索保存返回的 `session_id`。
 3. 同一会话后续检索持续传入该 `session_id`，让 Agent-Memory 去重已返回内容。
-4. Assistant 回合或会话结束时执行增量索引，让变更进入下一轮检索。
+4. 用户显式要求把文档、路径或链接导入知识库时，才写入 `knowledge` source。
+5. Assistant 回合或会话结束时，将会话历史写入 `conversation`，并自动提炼 `experience`、`preference`、`tool_history`、`fact`。
+6. 会话记忆沉淀后执行增量索引，让变更进入下一轮检索。
 
 ## 单目录封装
 
@@ -87,9 +89,9 @@ Hook 事件：
 | 事件 | 作用 |
 | --- | --- |
 | `SessionStart` | 会话启动或恢复时，检查索引；已索引则增量同步 |
-| `UserPromptSubmit` | 读取用户 prompt，执行 `code-context search`，注入检索结果 |
-| `Stop` | 主 Agent 回合结束时执行 `code-context sync` |
-| `SessionEnd` | 会话结束时再次执行 `code-context sync` |
+| `UserPromptSubmit` | 读取用户 prompt，记录到 hook 状态；若用户显式要求导入知识库，则执行 `code-context import knowledge`；随后执行 `code-context search` 并注入检索结果 |
+| `Stop` | 主 Agent 回合结束时沉淀 `conversation`、提炼 `experience` / `preference` / `tool_history` / `fact`，再执行 `code-context sync` |
+| `SessionEnd` | 会话结束时再次执行同样的记忆沉淀与 `code-context sync` |
 
 CodeBuddy 修改项目级 hook 配置后，通常需要在 `/hooks` 面板审查并启用。
 
@@ -106,8 +108,8 @@ Hook 事件：
 | 事件 | 作用 |
 | --- | --- |
 | `SessionStart` | 会话启动或恢复时准备索引 |
-| `UserPromptSubmit` | 根据用户 prompt 检索并注入 Agent-Memory 上下文 |
-| `Stop` | Agent 回合结束时增量同步索引 |
+| `UserPromptSubmit` | 记录用户 prompt；显式知识导入时写入 `knowledge`；再根据 prompt 检索并注入 Agent-Memory 上下文 |
+| `Stop` | Agent 回合结束时写入会话记忆、提炼结构化类型并增量同步索引 |
 
 ## 组件安装与配置
 
@@ -162,6 +164,8 @@ python3 .codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py sessio
 python3 .codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py prompt
 python3 .codebuddy/skills/agent-memory-context/hooks/agent_memory_hook.py sync
 ```
+
+其中 `prompt` 会先缓存本轮用户输入，并在用户明确表达“把某文档/路径/链接导入知识库”等语义时触发 `knowledge` 导入；`sync` 会在增量同步前读取 hook payload 或本地 hook 状态中的会话历史，写入 `conversation`，并用启发式规则提炼 `experience`、`preference`、`tool_history`、`fact`。
 
 脚本会从 hook 的 stdin JSON 中读取：
 

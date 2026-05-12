@@ -26,9 +26,12 @@ Treat the following workflow as non-optional whenever working in a repository us
 2. Search Agent-Memory for relevant context before using local assumptions.
 3. Preserve and reuse the returned `session_id` for every subsequent search in the same assistant conversation.
 4. Use that `session_id` on later searches so Agent-Memory can deduplicate results already returned.
-5. At the end of the assistant turn/session, run incremental indexing so changed files are searchable in the next turn.
-6. If the index is missing, run a full `index` before searching or syncing.
-7. If hooks are available, rely on hooks for start/search and end/sync; otherwise execute the workflow manually and keep the rule in persistent project instructions.
+5. At the end of the assistant turn/session, persist the session history into Agent-Memory as `conversation` memory.
+6. At the same end step, extract stable `experience`, `preference`, `tool_history`, and `fact` records from the session and import them under the matching source types.
+7. Run incremental indexing so changed files are searchable in the next turn.
+8. If the index is missing, run a full `index` before searching or syncing.
+9. If hooks are available, rely on hooks for start/search and end/sync; otherwise execute the workflow manually and keep the rule in persistent project instructions.
+10. Treat `knowledge` as manually curated content only: import it when the user explicitly asks to add a document/path/link to the knowledge base.
 
 ## Search Scope Selection
 
@@ -74,8 +77,8 @@ All hook assets live in `${CODEBUDDY_SKILL_DIR}`:
 Installed hook behavior:
 
 - `SessionStart`: ensure the repository is indexed or incrementally synced.
-- `UserPromptSubmit`: search with the user's prompt, inject results, and persist the Agent-Memory `session_id` mapping.
-- `Stop` / `SessionEnd`: run incremental sync for the next turn.
+- `UserPromptSubmit`: record the user prompt, optionally import explicitly requested documents/links as `knowledge`, search with the user's prompt, inject results, and persist the Agent-Memory `session_id` mapping.
+- `Stop` / `SessionEnd`: write session history as `conversation`, auto-extract `experience`, `preference`, `tool_history`, and `fact`, then run incremental sync for the next turn.
 
 ## Response Discipline
 

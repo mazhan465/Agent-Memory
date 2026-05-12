@@ -60,12 +60,17 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
 - Optional: Ollama for local embedding models.
 - Optional: OpenAI-compatible embedding API credentials.
 
+## Runtime Memory Flow
+
+- Prompt time: cache the user prompt, import `knowledge` only when the user explicitly asks to add a document, path, or link to the knowledge base, then search Agent-Memory.
+- Turn/session end: persist session history as `conversation`, extract `experience`, `preference`, `tool_history`, and `fact`, then run incremental sync.
+
 ## Manual Runtime Commands
 
 If hooks are disabled, run manually:
 
 ```bash
 code-context search <repo> "<query>" 8 all
-code-context search <repo> "<query>" 8 code --session-id=<session_id>
+code-context import memory experience <json-or-jsonl-path> <source-id>
 code-context sync <repo>
 ```
