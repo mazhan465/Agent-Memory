@@ -1134,23 +1134,25 @@
 
 ### 目标
 
-补齐搜索召回质量的离线评估入口，让后续调整 embedding、切块、关键词权重、领域过滤和 rerank 策略时，可以通过固定评估集观察 hit rate、mean recall 和 MRR 等指标变化。
+补齐搜索召回质量的离线评估入口，让后续调整 embedding、切块、关键词权重、领域过滤和 rerank 策略时，可以通过固定评估集观察 hit rate、precision、recall、F1、MRR 和 nDCG 等指标变化；同时参考 claude-context 的 SWE-bench Verified 子集评估方式，支持复用 `problem_statement`、`patch`、`oracles` 等字段。
 
 ### 方案
 
 - CLI 新增 `eval recall <path> <cases-json-or-jsonl> [limit] [types]`。
-- 评估集支持 JSON 数组和 JSONL，每条 case 包含 `query` 和 `expected` / `expected_results`。
+- 评估集支持 JSON 数组、JSONL，以及 claude-context 生成的顶层 `instances` JSON 对象。
+- 通用评估 case 包含 `query` 和 `expected` / `expected_results`。
+- 兼容 SWE-bench/claude-context 字段：`instance_id` 作为 case ID，`problem_statement` 作为 query，`oracles` / `oracle_files` / `patch` 作为 oracle 文件来源。
 - 期望结果可按 `result_id`、`content_hash`、`relative_path`、行号区间、source 信息、文档元数据、`domain_path`、`content_contains` 和自定义 metadata 匹配。
 - 评估时复用统一 `searchAll` 搜索入口，但关闭 session 去重，避免历史搜索状态影响评估指标。
-- 输出汇总指标：`hit_rate`、`mean_recall`、`mrr`、`average_hit_rank`，并返回每个 case 的命中详情和 Top 结果摘要。
+- 输出汇总指标：`hit_rate`、`mean_precision`、`mean_recall`、`mean_f1`、`mrr`、`mean_ndcg`、文件级 `mean_file_precision` / `mean_file_recall` / `mean_file_f1`、`average_hit_rank`，并返回每个 case 的命中详情和 Top 结果摘要。
 
 ### 模块影响
 
-- `cmd/code-context/eval.go`：新增召回评估命令、评估集读取、期望结果匹配和指标计算。
+- `cmd/code-context/eval.go`：新增召回评估命令、评估集读取、claude-context/SWE-bench 字段兼容、期望结果匹配和指标计算。
 - `cmd/code-context/search.go`：`searchRequestOptions` 增加 `DisableSession`，评估场景跳过 session 读写。
 - `cmd/code-context/main.go`：注册 `eval` 命令并更新 usage。
-- `cmd/code-context/eval_test.go`：新增 JSONL 读取、搜索评估和匹配规则测试。
-- `README.md`、`docs/design/overall_design.md`、`docs/development_log.md`：同步更新说明。
+- `cmd/code-context/eval_test.go`：新增 JSONL 读取、SWE-bench `instances` 数据集读取、搜索评估和匹配规则测试。
+- `README.md`、`docs/design/overall_design.md`、`docs/modules/module_design.md`、`docs/development_log.md`：同步更新说明。
 
 ### 验证方式
 
@@ -1163,5 +1165,7 @@
 ### 后续计划
 
 - 增加评估集生成辅助命令，从现有搜索结果中半自动生成 golden case。
+- 增加多仓库 SWE-bench 风格 runner：按 `repo`、`base_commit` 克隆/checkout，逐实例索引、评估和清理。
+- 增加 token usage、工具调用次数等效率指标采集，对齐 claude-context 的效率评估维度。
 - 增加分类型、分 source、分 namespace 的指标聚合。
-- 后续接入 rerank 后补充 nDCG、precision@k 和 rerank 前后对比。
+- 后续接入 rerank 后补充 rerank 前后对比。

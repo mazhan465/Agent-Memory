@@ -18,7 +18,7 @@
 - OpenAI-compatible Embedder（通过环境变量启用真实语义向量）
 - Ollama Embedder（通过本地 Ollama `/api/embed` 启用本地语义向量）
 - 本地混合检索基础能力：在向量相似度基础上融合查询关键词、路径和符号元数据命中分数，并按代码、知识库、历史会话、用户偏好等来源类型配置权重
-- 召回质量评估基础能力：通过 JSON/JSONL 评估集计算 hit rate、mean recall、MRR 和命中排名
+- 召回质量评估基础能力：通过 JSON/JSONL 评估集计算 hit rate、precision、recall、F1、MRR、nDCG 和命中排名，并兼容 claude-context/SWE-bench 的 `instances`、`problem_statement`、`patch`、`oracles` 字段
 - 本地 JSON 向量存储（便于无 Milvus 环境下开发测试）
 - CLI：`index`、`sync`、`search`、`eval recall`、`import knowledge`、`import memory`、`source list`、`source clear`、`config init`、`config path`、`clear`、`status`
 - MCP stdio Server：提供 `index_codebase`、`search_code`、`clear_index`、`get_indexing_status` 工具入口
@@ -72,6 +72,9 @@ cat > /tmp/agent-memory-recall-eval.jsonl <<'EOF'
 {"id":"auth","query":"authenticate user token","expected":[{"relative_path":"auth.go"}]}
 EOF
 ./bin/code-context eval recall /path/to/repo /tmp/agent-memory-recall-eval.jsonl 10 code
+
+# 也可复用 claude-context/SWE-bench 风格数据集：problem_statement 作为 query，patch/oracles 作为 oracle 文件
+./bin/code-context eval recall /path/to/repo ./swe_verified_15min1h_2files_instances.json 20 code
 
 # 查看状态
 ./bin/code-context status /path/to/repo

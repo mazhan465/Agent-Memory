@@ -39,6 +39,36 @@ func TestReadRecallEvalCasesJSONL(t *testing.T) {
 	}
 }
 
+func TestReadRecallEvalCasesSupportsSWEBenchDataset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "swe.json")
+	content := `{
+		"instances":[
+			{
+				"instance_id":"django__django-14170",
+				"problem_statement":"YearLookup breaks iso_year filtering",
+				"patch":"diff --git a/django/db/models/lookups.py b/django/db/models/lookups.py\n--- a/django/db/models/lookups.py\n+++ b/django/db/models/lookups.py\n@@ -1 +1 @@\n"
+			}
+		]
+	}`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cases, err := readRecallEvalCases(path)
+	if err != nil {
+		t.Fatalf("readRecallEvalCases() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	if cases[0].caseID() != "django__django-14170" || cases[0].queryText() == "" {
+		t.Fatalf("case = %+v, want instance id and problem statement", cases[0])
+	}
+	if got := cases[0].expectedResults()[0].RelativePath; got != "django/db/models/lookups.py" {
+		t.Fatalf("oracle file = %s, want django/db/models/lookups.py", got)
+	}
+}
+
 func TestEvaluateRecallUsesSearchResults(t *testing.T) {
 	ctx := context.Background()
 	storageDir := t.TempDir()
@@ -111,8 +141,12 @@ func TestEvaluateRecallUsesSearchResults(t *testing.T) {
 	if response.CaseCount != 1 || response.PassedCount != 1 || response.FailedCount != 0 {
 		t.Fatalf("response counts = %+v, want one passed case", response)
 	}
-	if response.HitRate != 1 || response.MRR != 1 || response.MeanRecall != 1 {
-		t.Fatalf("metrics = hit=%f mrr=%f recall=%f, want all 1", response.HitRate, response.MRR, response.MeanRecall)
+	if response.HitRate != 1 || response.MRR != 1 || response.MeanRecall != 1 || response.MeanNDCG != 1 {
+		t.Fatalf("metrics = hit=%f mrr=%f recall=%f ndcg=%f, want all 1",
+			response.HitRate, response.MRR, response.MeanRecall, response.MeanNDCG)
+	}
+	if response.MeanPrecision != 0.5 || response.MeanFilePrecision != 0.5 || response.MeanFileRecall != 1 {
+		t.Fatalf("precision metrics = %+v, want generic/file precision 0.5 and file recall 1", response)
 	}
 	if response.Cases[0].FirstHitRank != 1 || response.Cases[0].TopResults[0].RelativePath != "internal/order/repository.go" {
 		t.Fatalf("case result = %+v, want order repository at rank 1", response.Cases[0])

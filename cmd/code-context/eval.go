@@ -1,5 +1,5 @@
 // 文件说明：提供召回质量评估命令。
-// 实现原理：读取 JSON/JSONL 评估集，复用统一搜索入口执行检索，并根据期望结果计算 hit rate、MRR 和 recall。
+// 实现原理：读取 JSON/JSONL/SWE-bench 风格评估集，复用统一搜索入口执行检索，并根据期望结果计算 precision、recall、F1、MRR 和 nDCG。
 // 使用方式：runEval 由 CLI eval 命令调用，当前支持 eval recall <path> <cases-json-or-jsonl> [limit] [types]。
 // 注意事项：评估搜索会关闭会话去重，避免历史搜索状态影响指标。
 // 交互模块：cmd/code-context/search.go、internal/vectorstore。
@@ -13,13 +13,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 const evalRecordLineBufferSize = 1024 * 1024
+
+var patchOracleFileRegexp = regexp.MustCompile(`(?m)^--- a/(.+)$`)
 
 type recallEvalRequest struct {
 	RootPath  string
@@ -28,14 +32,24 @@ type recallEvalRequest struct {
 	Types     string
 }
 
+type recallEvalDataset struct {
+	Instances []recallEvalCase `json:"instances"`
+	Cases     []recallEvalCase `json:"cases"`
+}
+
 type recallEvalCase struct {
-	ID              string                 `json:"id,omitempty"`
-	Query           string                 `json:"query"`
-	Expected        []recallExpectedResult `json:"expected,omitempty"`
-	ExpectedResults []recallExpectedResult `json:"expected_results,omitempty"`
-	Limit           int                    `json:"limit,omitempty"`
-	Types           string                 `json:"types,omitempty"`
-	SearchTypes     []string               `json:"search_types,omitempty"`
+	ID               string                 `json:"id,omitempty"`
+	InstanceID       string                 `json:"instance_id,omitempty"`
+	Query            string                 `json:"query,omitempty"`
+	ProblemStatement string                 `json:"problem_statement,omitempty"`
+	Expected         []recallExpectedResult `json:"expected,omitempty"`
+	ExpectedResults  []recallExpectedResult `json:"expected_results,omitempty"`
+	Oracles          []string               `json:"oracles,omitempty"`
+	OracleFiles      []string               `json:"oracle_files,omitempty"`
+	Patch            string                 `json:"patch,omitempty"`
+	Limit            int                    `json:"limit,omitempty"`
+	Types            string                 `json:"types,omitempty"`
+	SearchTypes      []string               `json:"search_types,omitempty"`
 }
 
 type recallExpectedResult struct {
@@ -60,18 +74,25 @@ type recallExpectedResult struct {
 }
 
 type recallEvalResponse struct {
-	RootPath       string                 `json:"root_path"`
-	CasesPath      string                 `json:"cases_path"`
-	Limit          int                    `json:"limit"`
-	Types          string                 `json:"types"`
-	CaseCount      int                    `json:"case_count"`
-	PassedCount    int                    `json:"passed_count"`
-	FailedCount    int                    `json:"failed_count"`
-	HitRate        float64                `json:"hit_rate"`
-	MeanRecall     float64                `json:"mean_recall"`
-	MRR            float64                `json:"mrr"`
-	AverageHitRank float64                `json:"average_hit_rank,omitempty"`
-	Cases          []recallEvalCaseResult `json:"cases"`
+	RootPath          string                 `json:"root_path"`
+	CasesPath         string                 `json:"cases_path"`
+	Limit             int                    `json:"limit"`
+	Types             string                 `json:"types"`
+	CaseCount         int                    `json:"case_count"`
+	PassedCount       int                    `json:"passed_count"`
+	FailedCount       int                    `json:"failed_count"`
+	HitRate           float64                `json:"hit_rate"`
+	MeanPrecision     float64                `json:"mean_precision"`
+	MeanRecall        float64                `json:"mean_recall"`
+	MeanF1            float64                `json:"mean_f1"`
+	MRR               float64                `json:"mrr"`
+	MeanNDCG          float64                `json:"mean_ndcg"`
+	FileMetricCases   int                    `json:"file_metric_cases,omitempty"`
+	MeanFilePrecision float64                `json:"mean_file_precision,omitempty"`
+	MeanFileRecall    float64                `json:"mean_file_recall,omitempty"`
+	MeanFileF1        float64                `json:"mean_file_f1,omitempty"`
+	AverageHitRank    float64                `json:"average_hit_rank,omitempty"`
+	Cases             []recallEvalCaseResult `json:"cases"`
 }
 
 type recallEvalCaseResult struct {
@@ -81,8 +102,15 @@ type recallEvalCaseResult struct {
 	Types             string                `json:"types"`
 	ExpectedCount     int                   `json:"expected_count"`
 	MatchedExpected   int                   `json:"matched_expected"`
+	MatchedResults    int                   `json:"matched_results"`
 	Matched           bool                  `json:"matched"`
+	Precision         float64               `json:"precision"`
 	Recall            float64               `json:"recall"`
+	F1                float64               `json:"f1"`
+	NDCG              float64               `json:"ndcg"`
+	FilePrecision     float64               `json:"file_precision,omitempty"`
+	FileRecall        float64               `json:"file_recall,omitempty"`
+	FileF1            float64               `json:"file_f1,omitempty"`
 	FirstHitRank      int                   `json:"first_hit_rank,omitempty"`
 	ReciprocalRank    float64               `json:"reciprocal_rank"`
 	ResultCount       int                   `json:"result_count"`
@@ -187,8 +215,14 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 		CaseCount: len(cases),
 		Cases:     make([]recallEvalCaseResult, 0, len(cases)),
 	}
+	var precisionSum float64
 	var recallSum float64
+	var f1Sum float64
 	var reciprocalRankSum float64
+	var ndcgSum float64
+	var filePrecisionSum float64
+	var fileRecallSum float64
+	var fileF1Sum float64
 	var hitRankSum int
 	for _, testCase := range cases {
 		caseResult, err := a.evaluateRecallCase(ctx, request, testCase)
@@ -196,8 +230,17 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 			return recallEvalResponse{}, err
 		}
 		response.Cases = append(response.Cases, caseResult)
+		precisionSum += caseResult.Precision
 		recallSum += caseResult.Recall
+		f1Sum += caseResult.F1
 		reciprocalRankSum += caseResult.ReciprocalRank
+		ndcgSum += caseResult.NDCG
+		if hasFileExpectations(testCase.expectedResults()) {
+			response.FileMetricCases++
+			filePrecisionSum += caseResult.FilePrecision
+			fileRecallSum += caseResult.FileRecall
+			fileF1Sum += caseResult.FileF1
+		}
 		if caseResult.Matched {
 			response.PassedCount++
 			hitRankSum += caseResult.FirstHitRank
@@ -206,8 +249,16 @@ func (a *app) evaluateRecall(ctx context.Context, request recallEvalRequest) (re
 	response.FailedCount = response.CaseCount - response.PassedCount
 	if response.CaseCount > 0 {
 		response.HitRate = float64(response.PassedCount) / float64(response.CaseCount)
+		response.MeanPrecision = precisionSum / float64(response.CaseCount)
 		response.MeanRecall = recallSum / float64(response.CaseCount)
+		response.MeanF1 = f1Sum / float64(response.CaseCount)
 		response.MRR = reciprocalRankSum / float64(response.CaseCount)
+		response.MeanNDCG = ndcgSum / float64(response.CaseCount)
+	}
+	if response.FileMetricCases > 0 {
+		response.MeanFilePrecision = filePrecisionSum / float64(response.FileMetricCases)
+		response.MeanFileRecall = fileRecallSum / float64(response.FileMetricCases)
+		response.MeanFileF1 = fileF1Sum / float64(response.FileMetricCases)
 	}
 	if response.PassedCount > 0 {
 		response.AverageHitRank = float64(hitRankSum) / float64(response.PassedCount)
@@ -223,13 +274,14 @@ func (a *app) evaluateRecallCase(
 	expected := testCase.expectedResults()
 	limit := firstPositive(testCase.Limit, request.Limit)
 	types := testCase.typeArg(request.typeArg(a.config.DefaultSearchTypes))
+	query := testCase.queryText()
 	selection, err := newSearchTypeSelection(types)
 	if err != nil {
 		return recallEvalCaseResult{}, err
 	}
 	searchResponse, err := a.searchAll(ctx, searchRequestOptions{
 		RootPath:       request.RootPath,
-		Query:          testCase.Query,
+		Query:          query,
 		Limit:          limit,
 		Selection:      selection,
 		DisableSession: true,
@@ -237,49 +289,144 @@ func (a *app) evaluateRecallCase(
 	if err != nil {
 		return recallEvalCaseResult{}, err
 	}
-	return evaluateRecallCaseResult(testCase, expected, limit, types, searchResponse), nil
+	return evaluateRecallCaseResult(testCase, expected, query, limit, types, searchResponse), nil
 }
 
 func evaluateRecallCaseResult(
 	testCase recallEvalCase,
 	expected []recallExpectedResult,
+	query string,
 	limit int,
 	types string,
 	searchResponse searchJSONResponse,
 ) recallEvalCaseResult {
 	matchedExpected := make(map[int]struct{}, len(expected))
+	matchedResults := make(map[int]struct{}, len(searchResponse.Results))
 	firstHitRank := 0
-	for _, result := range searchResponse.Results {
+	relevantAtRank := make([]bool, len(searchResponse.Results))
+	for resultIndex, result := range searchResponse.Results {
+		matchedCurrentResult := false
 		for expectedIndex, expectedResult := range expected {
 			if !matchesExpectedResult(result, expectedResult) {
 				continue
 			}
+			if _, ok := matchedExpected[expectedIndex]; !ok {
+				relevantAtRank[resultIndex] = true
+			}
 			matchedExpected[expectedIndex] = struct{}{}
+			matchedCurrentResult = true
 			if firstHitRank == 0 {
 				firstHitRank = result.Rank
 			}
 		}
+		if matchedCurrentResult {
+			matchedResults[result.Rank] = struct{}{}
+		}
 	}
 	caseResult := recallEvalCaseResult{
-		ID:                testCase.ID,
-		Query:             testCase.Query,
+		ID:                testCase.caseID(),
+		Query:             query,
 		Limit:             limit,
 		Types:             types,
 		ExpectedCount:     len(expected),
 		MatchedExpected:   len(matchedExpected),
+		MatchedResults:    len(matchedResults),
 		Matched:           firstHitRank > 0,
 		FirstHitRank:      firstHitRank,
 		ResultCount:       searchResponse.ResultCount,
 		SearchedNamespace: searchResponse.SearchedNamespaces,
 		TopResults:        topRecallEvalResults(searchResponse.Results),
 	}
+	if len(searchResponse.Results) > 0 {
+		caseResult.Precision = float64(caseResult.MatchedResults) / float64(len(searchResponse.Results))
+	}
 	if len(expected) > 0 {
 		caseResult.Recall = float64(caseResult.MatchedExpected) / float64(len(expected))
+		caseResult.NDCG = normalizedDiscountedCumulativeGain(relevantAtRank, len(expected))
 	}
+	caseResult.F1 = f1Score(caseResult.Precision, caseResult.Recall)
+	caseResult.FilePrecision, caseResult.FileRecall, caseResult.FileF1 = fileLevelMetrics(searchResponse.Results, expected)
 	if firstHitRank > 0 {
 		caseResult.ReciprocalRank = 1 / float64(firstHitRank)
 	}
 	return caseResult
+}
+
+func normalizedDiscountedCumulativeGain(relevantAtRank []bool, expectedCount int) float64 {
+	if expectedCount <= 0 || len(relevantAtRank) == 0 {
+		return 0
+	}
+	dcg := 0.0
+	for index, relevant := range relevantAtRank {
+		if relevant {
+			dcg += 1 / math.Log2(float64(index+2))
+		}
+	}
+	idealRelevantCount := expectedCount
+	if idealRelevantCount > len(relevantAtRank) {
+		idealRelevantCount = len(relevantAtRank)
+	}
+	idcg := 0.0
+	for index := range idealRelevantCount {
+		idcg += 1 / math.Log2(float64(index+2))
+	}
+	if idcg == 0 {
+		return 0
+	}
+	return dcg / idcg
+}
+
+func f1Score(precision float64, recall float64) float64 {
+	if precision+recall == 0 {
+		return 0
+	}
+	return 2 * precision * recall / (precision + recall)
+}
+
+func fileLevelMetrics(results []searchJSONResult, expected []recallExpectedResult) (float64, float64, float64) {
+	hitFiles := make(map[string]struct{})
+	for _, result := range results {
+		if result.Location.RelativePath != "" {
+			hitFiles[normalizeEvalFilePath(result.Location.RelativePath)] = struct{}{}
+		}
+	}
+	oracleFiles := expectedFileSet(expected)
+	if len(hitFiles) == 0 && len(oracleFiles) == 0 {
+		return 0, 0, 0
+	}
+	matched := 0
+	for filePath := range hitFiles {
+		if _, ok := oracleFiles[filePath]; ok {
+			matched++
+		}
+	}
+	precision := 0.0
+	if len(hitFiles) > 0 {
+		precision = float64(matched) / float64(len(hitFiles))
+	}
+	recall := 0.0
+	if len(oracleFiles) > 0 {
+		recall = float64(matched) / float64(len(oracleFiles))
+	}
+	return precision, recall, f1Score(precision, recall)
+}
+
+func expectedFileSet(expected []recallExpectedResult) map[string]struct{} {
+	files := make(map[string]struct{})
+	for _, item := range expected {
+		if item.RelativePath != "" {
+			files[normalizeEvalFilePath(item.RelativePath)] = struct{}{}
+		}
+	}
+	return files
+}
+
+func hasFileExpectations(expected []recallExpectedResult) bool {
+	return len(expectedFileSet(expected)) > 0
+}
+
+func normalizeEvalFilePath(filePath string) string {
+	return strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(filePath)), "/")
 }
 
 func matchesExpectedResult(result searchJSONResult, expected recallExpectedResult) bool {
@@ -301,8 +448,12 @@ func matchesExpectedResult(result searchJSONResult, expected recallExpectedResul
 	if expected.Namespace != "" && result.Namespace != expected.Namespace {
 		return false
 	}
-	if expected.RelativePath != "" && result.Location.RelativePath != filepath.ToSlash(expected.RelativePath) {
-		return false
+	if expected.RelativePath != "" {
+		resultPath := normalizeEvalFilePath(result.Location.RelativePath)
+		expectedPath := normalizeEvalFilePath(expected.RelativePath)
+		if resultPath != expectedPath {
+			return false
+		}
 	}
 	if !lineExpectationMatches(result.Location, expected) {
 		return false
@@ -405,14 +556,25 @@ func readRecallEvalCases(path string) ([]recallEvalCase, error) {
 	if len(trimmed) == 0 {
 		return nil, errors.New("recall eval cases file is empty")
 	}
-	if trimmed[0] == '[' {
+	switch trimmed[0] {
+	case '[':
 		var cases []recallEvalCase
 		if err := json.Unmarshal(trimmed, &cases); err != nil {
 			return nil, err
 		}
 		return validateRecallEvalCases(cases)
+	case '{':
+		var dataset recallEvalDataset
+		if err := json.Unmarshal(trimmed, &dataset); err != nil {
+			return readRecallEvalJSONL(trimmed)
+		}
+		if len(dataset.Instances) > 0 {
+			return validateRecallEvalCases(dataset.Instances)
+		}
+		return validateRecallEvalCases(dataset.Cases)
+	default:
+		return readRecallEvalJSONL(trimmed)
 	}
-	return readRecallEvalJSONL(trimmed)
 }
 
 func readRecallEvalJSONL(data []byte) ([]recallEvalCase, error) {
@@ -441,7 +603,7 @@ func validateRecallEvalCases(cases []recallEvalCase) ([]recallEvalCase, error) {
 		return nil, errors.New("recall eval cases are empty")
 	}
 	for index, testCase := range cases {
-		if strings.TrimSpace(testCase.Query) == "" {
+		if strings.TrimSpace(testCase.queryText()) == "" {
 			return nil, fmt.Errorf("recall eval case %d query is empty", index+1)
 		}
 		if len(testCase.expectedResults()) == 0 {
@@ -458,7 +620,62 @@ func (c recallEvalCase) expectedResults() []recallExpectedResult {
 	if len(c.Expected) > 0 {
 		return c.Expected
 	}
-	return c.ExpectedResults
+	if len(c.ExpectedResults) > 0 {
+		return c.ExpectedResults
+	}
+	oracleFiles := c.Oracles
+	if len(oracleFiles) == 0 {
+		oracleFiles = c.OracleFiles
+	}
+	if len(oracleFiles) == 0 {
+		oracleFiles = extractOracleFilesFromPatch(c.Patch)
+	}
+	expected := make([]recallExpectedResult, 0, len(oracleFiles))
+	for _, filePath := range oracleFiles {
+		cleanPath := normalizeEvalFilePath(filePath)
+		if cleanPath != "" {
+			expected = append(expected, recallExpectedResult{RelativePath: cleanPath})
+		}
+	}
+	return expected
+}
+
+func (c recallEvalCase) queryText() string {
+	if strings.TrimSpace(c.Query) != "" {
+		return c.Query
+	}
+	return c.ProblemStatement
+}
+
+func (c recallEvalCase) caseID() string {
+	if strings.TrimSpace(c.ID) != "" {
+		return c.ID
+	}
+	return c.InstanceID
+}
+
+func extractOracleFilesFromPatch(patch string) []string {
+	if strings.TrimSpace(patch) == "" {
+		return nil
+	}
+	matches := patchOracleFileRegexp.FindAllStringSubmatch(patch, -1)
+	seen := make(map[string]struct{}, len(matches))
+	files := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		filePath := normalizeEvalFilePath(match[1])
+		if filePath == "" {
+			continue
+		}
+		if _, ok := seen[filePath]; ok {
+			continue
+		}
+		seen[filePath] = struct{}{}
+		files = append(files, filePath)
+	}
+	return files
 }
 
 func (c recallEvalCase) typeArg(fallback string) string {
