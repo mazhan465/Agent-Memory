@@ -16,7 +16,7 @@ For a new machine or project, install this skill package before relying on autom
 python3 ${CODEBUDDY_SKILL_DIR}/install.py --project-root <repo>
 ```
 
-The installer keeps all skill assets in one directory, installs project hooks/templates, downloads Agent-Memory binaries into an install `bin` directory, adds that directory to `PATH`, installs Milvus through Docker Compose, and guides the user through embedding provider selection.
+The installer keeps all skill assets in one directory, installs project hooks/templates, downloads Agent-Memory binaries into an install `bin` directory, adds that directory to `PATH`, installs Milvus through Docker Compose or local Milvus Lite, and guides the user through embedding provider selection. Go is only required when building Agent-Memory from source.
 
 ## Mandatory Runtime Contract
 

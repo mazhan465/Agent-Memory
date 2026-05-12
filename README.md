@@ -44,26 +44,38 @@ Agent-Memory 目前处于可运行的 MVP / early preview 阶段，适合：
 
 ## 快速开始
 
-### 1. 从源码构建
+### 1. 安装 CLI
 
-要求：
-
-- Go 1.25+
-- Git
-- Python 3（仅安装 skill / hooks 时需要）
-- Docker / Docker Desktop（使用 Milvus 时需要）
+推荐直接使用 GitHub Release 二进制文件；这种方式不需要 Go 环境：
 
 ```bash
 git clone https://github.com/mazhan465/Agent-Memory.git
 cd Agent-Memory
 
-# 构建 CLI
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root . \
+  --skip-hooks \
+  --skip-milvus \
+  --embedding hash \
+  --yes
+```
+
+如果需要从源码构建，再安装 Go 1.25+ 并执行：
+
+```bash
 make build
 
 # 可选：构建 MCP Server
 mkdir -p bin
 go build -o bin/code-context-mcp ./cmd/code-context-mcp
 ```
+
+基础要求：
+
+- Git
+- Python 3（安装 skill / hooks、Milvus Lite 或运行安装器时需要）
+- Go 1.25+（仅源码构建或开发时需要）
+- Docker / Docker Desktop（仅使用 Milvus Docker 模式时需要）
 
 ### 2. 初始化配置
 
@@ -215,13 +227,23 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 ./bin/code-context index /path/to/repo
 ```
 
-如果使用内置 skill 安装脚本，它会尝试下载 Milvus 官方 standalone Docker Compose 文件并启动 Milvus：
+如果使用内置 skill 安装脚本，可以选择 Milvus 运行模式：
 
 ```bash
-python3 .codebuddy/skills/agent-memory-context/install.py --project-root . --embedding ollama
+# Docker Compose 模式，适合接近 standalone 部署的本地环境
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root . \
+  --milvus-mode docker \
+  --embedding ollama
+
+# 本地非 Docker 模式，使用 Milvus Lite server 监听 localhost:19530
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root . \
+  --milvus-mode lite \
+  --embedding ollama
 ```
 
-macOS / Windows 推荐先安装 Docker Desktop；Linux 需要 Docker Engine 与 Docker Compose V2。
+`--milvus-mode docker` 需要 Docker / Docker Desktop；`--milvus-mode lite` 会在安装目录创建 Python venv 并安装 `pymilvus[milvus-lite]`，适合 macOS、Windows 和 Linux 的本地小规模开发验证。
 
 ## MCP Server
 
@@ -258,6 +280,9 @@ Agent-Memory 提供 stdio MCP Server：
 
 ```bash
 python3 .codebuddy/skills/agent-memory-context/install.py --project-root .
+
+# 无 Docker 本地开发可选择 Milvus Lite
+python3 .codebuddy/skills/agent-memory-context/install.py --project-root . --milvus-mode lite
 ```
 
 安装后会把相关模板写入目标项目：

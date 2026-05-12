@@ -9,12 +9,14 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen, urlretrieve
@@ -56,15 +58,38 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Install Agent-Memory context-loop skill")
     parser.add_argument("--project-root", help="Project root to install CodeBuddy/Codex hooks into")
-    parser.add_argument("--install-root", help="Directory for Agent-Memory binaries, env file, and Milvus compose")
+    parser.add_argument(
+        "--install-root",
+        help="Directory for Agent-Memory binaries, env file, and Milvus runtime files",
+    )
     parser.add_argument("--github-repo", default=DEFAULT_GITHUB_REPO, help="GitHub repo that publishes binaries")
     parser.add_argument("--version", default="latest", help="GitHub release tag or latest")
     parser.add_argument("--python-cmd", help="Python command used inside generated hook configs")
     parser.add_argument("--skip-hooks", action="store_true", help="Do not install CodeBuddy/Codex hook configs")
     parser.add_argument("--skip-binary", action="store_true", help="Do not download code-context binaries")
-    parser.add_argument("--skip-milvus", action="store_true", help="Do not install Milvus docker compose")
-    parser.add_argument("--no-start-milvus", action="store_true", help="Write Milvus compose file but do not start containers")
-    parser.add_argument("--milvus-version", default=DEFAULT_MILVUS_VERSION, help="Milvus release tag for compose file")
+    parser.add_argument("--skip-milvus", action="store_true", help="Do not install a Milvus runtime")
+    parser.add_argument(
+        "--milvus-mode",
+        default="docker",
+        choices=["docker", "lite", "binary-guide"],
+        help="Milvus runtime mode: docker compose, local Milvus Lite, or Linux binary guide",
+    )
+    parser.add_argument("--no-start-milvus", action="store_true", help="Install Milvus files but do not start Milvus")
+    parser.add_argument(
+        "--milvus-version",
+        default=DEFAULT_MILVUS_VERSION,
+        help="Milvus release tag for Docker compose or binary guide",
+    )
+    parser.add_argument("--milvus-port", default="19530", help="Milvus listen port for local modes")
+    parser.add_argument(
+        "--milvus-data-dir",
+        help="Milvus Lite data directory; defaults to <install-root>/milvus-lite/data",
+    )
+    parser.add_argument(
+        "--milvus-lite-package",
+        default="pymilvus[milvus-lite]",
+        help="Python package spec used for local Milvus Lite installation",
+    )
     parser.add_argument(
         "--embedding",
         default="prompt",
@@ -447,6 +472,16 @@ def update_windows_path(bin_dir: Path) -> None:
 
 
 def install_milvus(args: argparse.Namespace, install_root: Path) -> None:
+    if args.milvus_mode == "lite":
+        install_milvus_lite(args, install_root)
+        return
+    if args.milvus_mode == "binary-guide":
+        write_milvus_binary_guide(args, install_root)
+        return
+    install_milvus_docker(args, install_root)
+
+
+def install_milvus_docker(args: argparse.Namespace, install_root: Path) -> None:
     milvus_dir = install_root / "milvus"
     milvus_dir.mkdir(parents=True, exist_ok=True)
     compose_path = milvus_dir / "docker-compose.yml"
@@ -481,6 +516,145 @@ def install_milvus(args: argparse.Namespace, install_root: Path) -> None:
     else:
         print(f"WARNING: docker compose failed: {result.stderr.strip()}")
         print(f"Retry manually: docker compose -f {compose_path} up -d")
+
+
+def install_milvus_lite(args: argparse.Namespace, install_root: Path) -> None:
+    milvus_dir = install_root / "milvus-lite"
+    venv_dir = milvus_dir / "venv"
+    data_dir = Path(args.milvus_data_dir).expanduser().resolve() if args.milvus_data_dir else milvus_dir / "data"
+    log_dir = milvus_dir / "logs"
+    milvus_dir.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    if not ensure_venv(venv_dir):
+        print("WARNING: failed to create Python venv for Milvus Lite")
+        print("Install manually: python -m venv <venv> && pip install -U 'pymilvus[milvus-lite]'")
+        return
+    pip = venv_bin(venv_dir, "pip")
+    result = subprocess.run(
+        [str(pip), "install", "-U", args.milvus_lite_package],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"WARNING: failed to install Milvus Lite: {result.stderr.strip()}")
+        return
+
+    server = venv_bin(venv_dir, "milvus-lite")
+    if not server.exists():
+        print(f"WARNING: Milvus Lite command was not found after install: {server}")
+        print(f"Try manually: {pip} install -U {args.milvus_lite_package}")
+        return
+    write_milvus_lite_start_scripts(milvus_dir, server, data_dir, args.milvus_port)
+    if args.no_start_milvus:
+        print(f"Milvus Lite installed. Start it with: {milvus_dir / start_script_name()}")
+        return
+    start_milvus_lite(server, data_dir, args.milvus_port, log_dir)
+
+
+def ensure_venv(venv_dir: Path) -> bool:
+    if venv_bin(venv_dir, "python").exists():
+        return True
+    result = subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=False)
+    return result.returncode == 0
+
+
+def venv_bin(venv_dir: Path, name: str) -> Path:
+    if normalized_os() == "windows":
+        suffix = ".exe" if name in {"python", "pip", "milvus-lite"} else ""
+        return venv_dir / "Scripts" / f"{name}{suffix}"
+    return venv_dir / "bin" / name
+
+
+def write_milvus_lite_start_scripts(milvus_dir: Path, server: Path, data_dir: Path, port: str) -> None:
+    if normalized_os() == "windows":
+        script = milvus_dir / "start-milvus-lite.ps1"
+        script.write_text(
+            f"& '{server}' server --data-dir '{data_dir}' --port {port}\n",
+            encoding="utf-8",
+        )
+        print(f"Wrote Milvus Lite start script: {script}")
+        return
+    script = milvus_dir / "start-milvus-lite.sh"
+    script.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"exec {shlex.quote(str(server))} server --data-dir {shlex.quote(str(data_dir))} --port {port}\n",
+        encoding="utf-8",
+    )
+    make_executable(script)
+    print(f"Wrote Milvus Lite start script: {script}")
+
+
+def start_script_name() -> str:
+    if normalized_os() == "windows":
+        return "start-milvus-lite.ps1"
+    return "start-milvus-lite.sh"
+
+
+def start_milvus_lite(server: Path, data_dir: Path, port: str, log_dir: Path) -> None:
+    stdout_path = log_dir / "milvus-lite.out.log"
+    stderr_path = log_dir / "milvus-lite.err.log"
+    stdout_file = stdout_path.open("ab")
+    stderr_file = stderr_path.open("ab")
+    command = [str(server), "server", "--data-dir", str(data_dir), "--port", str(port)]
+    try:
+        if normalized_os() == "windows":
+            process = subprocess.Popen(
+                command,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
+            )
+        else:
+            process = subprocess.Popen(command, stdout=stdout_file, stderr=stderr_file, start_new_session=True)
+    except OSError as exc:
+        stdout_file.close()
+        stderr_file.close()
+        print(f"WARNING: failed to start Milvus Lite: {exc}")
+        print(f"Start manually: {' '.join(command)}")
+        return
+    time.sleep(2)
+    if process.poll() is None:
+        print(f"Milvus Lite started at localhost:{port} pid={process.pid}")
+        print(f"Milvus Lite logs: {stdout_path}, {stderr_path}")
+    else:
+        print(f"WARNING: Milvus Lite exited early with code {process.returncode}; check logs: {stderr_path}")
+    stdout_file.close()
+    stderr_file.close()
+
+
+def write_milvus_binary_guide(args: argparse.Namespace, install_root: Path) -> None:
+    guide_path = install_root / "milvus-binary" / "README.md"
+    guide_path.parent.mkdir(parents=True, exist_ok=True)
+    guide = f"""# Milvus binary standalone guide
+
+Milvus upstream documents a non-Docker runtime path for Linux amd64 by running etcd, MinIO,
+and the Milvus standalone binary directly.
+
+This mode is not fully automated here because upstream binary setup is Linux-focused and may
+still require Docker once to extract the Milvus binary from `milvusdb/milvus:{args.milvus_version}`.
+
+Reference: https://github.com/milvus-io/milvus/blob/master/deployments/binary/README.md
+
+Runtime address expected by Agent-Memory:
+
+```bash
+export AGENT_MEMORY_VECTOR_STORE=milvus
+export AGENT_MEMORY_MILVUS_ADDRESS=localhost:{args.milvus_port}
+```
+
+For local non-Docker development on macOS, Windows, or Linux, prefer:
+
+```bash
+python3 install.py --milvus-mode lite
+```
+"""
+    guide_path.write_text(guide, encoding="utf-8")
+    print(f"Wrote Milvus binary standalone guide: {guide_path}")
 
 
 def choose_embedding(args: argparse.Namespace) -> str:

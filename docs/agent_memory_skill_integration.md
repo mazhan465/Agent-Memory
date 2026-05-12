@@ -56,6 +56,7 @@ python3 .codebuddy/skills/agent-memory-context/install.py --project-root .
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --yes \
+  --milvus-mode lite \
   --embedding ollama \
   --install-ollama
 ```
@@ -67,9 +68,9 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
 3. 安装 CodeBuddy 项目规则到 `.codebuddy/rules/agent-memory-context.md`。
 4. 安装 Codex hooks 到 `.codex/config.toml`。
 5. 追加 Codex `AGENTS.md` 强约束块。
-6. 从 GitHub Release 下载 `code-context` 和 `code-context-mcp` 到 `<install-root>/bin`。
+6. 从 GitHub Release 下载 `code-context` 和 `code-context-mcp` 到 `<install-root>/bin`，因此普通用户不需要 Go 环境。
 7. 将 `<install-root>/bin` 加入用户 `PATH`。
-8. 下载 Milvus 官方 standalone Docker Compose 文件并启动 Milvus。
+8. 按 `--milvus-mode` 安装 Milvus：默认 Docker Compose，也支持本地非 Docker 的 Milvus Lite。
 9. 引导选择 `hash`、`ollama` 或 `openai-compatible` embedding，并写入 `<install-root>/agent-memory.env`。
 
 ## CodeBuddy 集成
@@ -125,13 +126,22 @@ AGENT_MEMORY_CODE_CONTEXT_BIN=/path/to/code-context
 
 ### Milvus
 
-安装脚本默认下载 Milvus 官方 standalone Docker Compose 文件，并执行：
+安装脚本支持三种模式：
+
+| 模式 | 参数 | 说明 |
+| --- | --- | --- |
+| Docker Compose | `--milvus-mode docker` | 默认模式，下载 Milvus 官方 standalone Docker Compose 文件并执行 `docker compose up -d`。 |
+| Milvus Lite | `--milvus-mode lite` | 本地非 Docker 模式，在 `<install-root>/milvus-lite/venv` 安装 `pymilvus[milvus-lite]`，并以 server 模式监听 `localhost:19530`。 |
+| Binary guide | `--milvus-mode binary-guide` | 生成 Linux amd64 binary standalone 参考文档，适合用户手动安装 etcd、MinIO 和 Milvus binary。 |
+
+Docker 模式需要 Docker / Docker Desktop；Milvus Lite 模式需要 Python 3，适合 macOS、Windows 和 Linux 的本地小规模开发验证。
 
 ```bash
-docker compose -f <install-root>/milvus/docker-compose.yml up -d
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root . \
+  --milvus-mode lite \
+  --embedding ollama
 ```
-
-macOS 和 Windows 需要先安装 Docker Desktop；Linux 需要 Docker Engine 与 Docker Compose V2。
 
 ### Embedding 模型
 

@@ -28,6 +28,7 @@ Non-interactive example:
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --yes \
+  --milvus-mode lite \
   --embedding ollama \
   --install-ollama
 ```
@@ -41,20 +42,21 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
 5. Appends the Agent-Memory instruction block into `<project>/AGENTS.md`.
 6. Downloads `code-context` and `code-context-mcp` release assets from GitHub into `<install-root>/bin`.
 7. Adds `<install-root>/bin` to the user `PATH` when allowed.
-8. Installs Milvus standalone by downloading the official Docker Compose file and starting it with Docker Compose.
+8. Installs Milvus with the selected mode: Docker Compose by default, local non-Docker Milvus Lite with `--milvus-mode lite`, or a Linux binary guide with `--milvus-mode binary-guide`.
 9. Guides the user to choose `hash`, `ollama`, or `openai-compatible` embeddings and writes `<install-root>/agent-memory.env`.
 
 ## Platform Notes
 
-- macOS: install script uses shell profile updates for `PATH`; optional Ollama install uses Homebrew when available.
-- Windows: install script uses the user `Path` environment variable; Docker Desktop is required for Milvus; optional Ollama install uses `winget` when available.
-- Linux: Docker Compose is used for Milvus; binary download and PATH setup follow the same Unix flow.
+- macOS: install script uses shell profile updates for `PATH`; optional Ollama install uses Homebrew when available; Milvus Lite is the local non-Docker option.
+- Windows: install script uses the user `Path` environment variable; optional Ollama install uses `winget` when available; Milvus Lite avoids requiring Docker Desktop for local development.
+- Linux: Docker Compose is the default Milvus mode; Milvus Lite and the binary guide are available for non-Docker local setups.
 
 ## Required External Components
 
-- Docker / Docker Desktop for Milvus.
-- Python 3 for hooks and installer.
+- Python 3 for hooks, installer, and Milvus Lite mode.
 - Git for repository root discovery.
+- Optional: Docker / Docker Desktop for Milvus Docker mode.
+- Optional: Go 1.25+ only when building from source; release binaries do not require Go.
 - Optional: Ollama for local embedding models.
 - Optional: OpenAI-compatible embedding API credentials.
 
