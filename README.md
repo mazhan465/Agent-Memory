@@ -1,52 +1,56 @@
 # Agent-Memory
 
-Agent-Memory 是一个面向 AI 编程助手、IDE Agent 和自动化工具链的上下文记忆与知识供给引擎。它可以把代码库、项目文档、历史会话、工具记录、用户偏好和经验沉淀统一索引成可检索的上下文，并在每次对话或任务执行时为 Agent 提供准确、可追溯、可增量更新的项目知识。
+English | [简体中文](README.zh-CN.md)
 
-它的目标不是再做一个笔记系统，而是成为 Agent 工作流中的“上下文层”：在用户发出提示词时先检索相关代码、文档与记忆；在任务结束时把新增或修改的内容增量写回索引，让下一次检索拿到最新上下文。
+> Documentation maintenance note: whenever the default English README changes, update the Chinese README at the same time; whenever the Chinese README changes, sync the English README as well.
 
-## 为什么需要 Agent-Memory
+Agent-Memory is a context memory and knowledge delivery engine for AI coding assistants, IDE agents, and automation toolchains. It indexes codebases, project documentation, historical conversations, tool logs, user preferences, and accumulated experience into searchable context, then provides accurate, traceable, and incrementally updated project knowledge for agents during every conversation or task.
 
-AI 编程助手经常面临几个问题：
+Agent-Memory is not intended to be another note-taking system. Its goal is to become the context layer of agent workflows: retrieve relevant code, documentation, and memory before the agent starts working, then incrementally write new or changed content back to the index when the task ends so the next retrieval sees the latest context.
 
-- 上下文窗口有限，无法长期记住整个代码库和历史决策。
-- 代码、文档、团队规范、历史修复经验分散在不同位置。
-- 每轮对话都要重新搜索项目背景，重复且容易遗漏。
-- 代码修改后如果不重新索引，后续 Agent 仍会基于旧上下文工作。
+## Why Agent-Memory
 
-Agent-Memory 通过“索引 → 检索 → 会话级去重 → 增量同步”的闭环解决这些问题。
+AI coding assistants often face several recurring problems:
 
-## 核心能力
+- Context windows are limited and cannot permanently hold an entire codebase or long-term decisions.
+- Code, documentation, team rules, and historical fixes are scattered across different places.
+- Every conversation has to rediscover project background, which is repetitive and easy to miss.
+- After code changes, later agents may still work from stale context unless the project is re-indexed.
 
-- **代码库索引**：扫描本地代码库，遵循 `.gitignore` / `.xxxignore`，支持自定义扩展名和忽略规则。
-- **增量更新**：基于文件大小、修改时间和 hash snapshot 判断新增、修改、删除文件，避免每次全量重建。
-- **语法切块**：基于 tree-sitter 对 Go / C++ 代码按 package、import、function、class、namespace 等结构切块；解析失败时回退行级切块。
-- **文档知识库**：导入 Markdown 文档，保留标题路径、文档 ID、章节 ID、知识类型等元数据。
-- **长期记忆导入**：导入历史会话、经验、偏好、工具历史和事实等 JSON/JSONL source。
-- **混合检索**：结合向量相似度、关键词、路径和符号元数据，并支持按 source 类型配置权重。
-- **会话级去重**：搜索结果返回 `session_id`；同一会话后续搜索带上该 ID，可避免重复返回已看过的内容。
-- **多种 Embedding 后端**：内置 hash embedder 便于本地快速试用，也支持 OpenAI-compatible API 和 Ollama 本地模型。
-- **多种向量存储**：默认本地 JSON 存储，支持切换到 Milvus。
-- **CLI 与 MCP**：提供 `code-context` 命令行工具和 `code-context-mcp` stdio MCP Server。
-- **Agent 集成闭环**：提供 CodeBuddy / Codex skill、hooks 和安装脚本，使 Agent 在对话开始检索上下文、结束时增量同步。
-- **召回评估**：支持 JSON/JSONL 评估集，计算 hit rate、precision、recall、F1、MRR、nDCG，并兼容 SWE-bench 风格 oracle 文件。
+Agent-Memory solves these problems with a closed loop: index → retrieve → session-level deduplication → incremental sync.
 
-## 当前状态
+## Core Features
 
-Agent-Memory 目前处于可运行的 MVP / early preview 阶段，适合：
+- **Codebase indexing**: scans local repositories, respects `.gitignore` / `.xxxignore`, and supports custom extensions and ignore rules.
+- **Incremental updates**: detects created, modified, and deleted files with file size, modification time, and hash snapshots to avoid full rebuilds every time.
+- **Syntax-aware chunking**: uses tree-sitter to split Go / C++ code by package, imports, functions, classes, namespaces, and related structures; falls back to line-based chunks when parsing fails.
+- **Documentation knowledge base**: imports Markdown documents while preserving metadata such as heading paths, document IDs, section IDs, and knowledge types.
+- **Long-term memory import**: imports historical conversations, experience, preferences, tool history, and facts from JSON/JSONL sources.
+- **Hybrid retrieval**: combines vector similarity, keywords, paths, and symbol metadata, with source-specific weighting.
+- **Session-level deduplication**: search returns a `session_id`; later searches in the same session can pass that ID to avoid repeated results.
+- **Multiple embedding backends**: includes a dependency-free hash embedder for local trials and supports OpenAI-compatible APIs and local Ollama models.
+- **Multiple vector stores**: uses a local JSON vector store by default and can switch to Milvus.
+- **CLI and MCP**: provides the `code-context` CLI and the `code-context-mcp` stdio MCP server.
+- **Agent integration loop**: provides CodeBuddy / Codex skills, hooks, and installer scripts so agents can retrieve context at conversation start and sync changes at the end.
+- **Recall evaluation**: supports JSON/JSONL evaluation sets, computes hit rate, precision, recall, F1, MRR, and nDCG, and is compatible with SWE-bench-style oracle files.
 
-- 本地代码库语义检索。
-- 为 IDE Agent / CLI Agent 提供项目上下文。
-- 导入项目文档、团队规范和经验记忆。
-- 评估不同检索策略或 embedding/vector store 对召回质量的影响。
-- 探索 CodeBuddy / Codex hooks 驱动的上下文闭环。
+## Current Status
 
-接口和数据格式仍可能演进，欢迎基于实际 Agent 工作流反馈问题和改进建议。
+Agent-Memory is currently a runnable MVP / early preview. It is suitable for:
 
-## 快速开始
+- Semantic retrieval over local codebases.
+- Providing project context to IDE agents and CLI agents.
+- Importing project documentation, team rules, and accumulated experience.
+- Evaluating how different retrieval strategies or embedding/vector store choices affect recall quality.
+- Exploring context loops driven by CodeBuddy / Codex hooks.
 
-### 1. 安装 CLI
+APIs and data formats may still evolve. Feedback and improvement suggestions based on real agent workflows are welcome.
 
-推荐直接使用 GitHub Release 二进制文件；这种方式不需要 Go 环境：
+## Quick Start
+
+### 1. Install the CLI
+
+The recommended path is to use GitHub Release binaries directly. This path does not require a Go toolchain:
 
 ```bash
 git clone https://github.com/mazhan465/Agent-Memory.git
@@ -60,75 +64,75 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
   --yes
 ```
 
-如果需要从源码构建，再安装 Go 1.25+ 并执行：
+If you need to build from source, install Go 1.25+ and run:
 
 ```bash
 make build
 
-# 可选：构建 MCP Server
+# Optional: build the MCP server
 mkdir -p bin
 go build -o bin/code-context-mcp ./cmd/code-context-mcp
 ```
 
-基础要求：
+Base requirements:
 
 - Git
-- Python 3（安装 skill / hooks、Milvus Lite 或运行安装器时需要）
-- Go 1.25+（仅源码构建或开发时需要）
-- Docker / Docker Desktop（仅使用 Milvus Docker 模式时需要）
+- Python 3, required for installing skills/hooks, running Milvus Lite, or using the installer
+- Go 1.25+, required only for source builds or development
+- Docker / Docker Desktop, required only when using Milvus in Docker mode
 
-### 2. 初始化配置
+### 2. Initialize Configuration
 
 ```bash
 ./bin/code-context config init
 ./bin/code-context config path
 ```
 
-默认配置文件位于用户目录下的 `.AgentMemory/config.yaml`，也可以用 `AGENT_MEMORY_CONFIG` 指定其他路径。环境变量优先级高于配置文件。
+The default config file is stored under `.AgentMemory/config.yaml` in the user home directory. You can also set `AGENT_MEMORY_CONFIG` to point to another path. Environment variables have higher priority than config files.
 
-### 3. 索引代码库
+### 3. Index a Codebase
 
 ```bash
 ./bin/code-context index /path/to/repo
 ```
 
-查看索引状态：
+Check indexing status:
 
 ```bash
 ./bin/code-context status /path/to/repo
 ```
 
-后续增量同步：
+Run incremental sync later:
 
 ```bash
 ./bin/code-context sync /path/to/repo
-# 或同步所有已索引路径
+# Or sync all indexed paths
 ./bin/code-context sync --all
 ```
 
-### 4. 搜索上下文
+### 4. Search Context
 
 ```bash
 ./bin/code-context search /path/to/repo "where is authentication handled"
 ```
 
-指定返回数量和搜索类型：
+Specify result count and search type:
 
 ```bash
 ./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge
 ```
 
-复用 `session_id` 做会话级去重：
+Reuse a `session_id` for session-level deduplication:
 
 ```bash
 ./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
 ```
 
-可用搜索类型：
+Available search types:
 
 - `all`
 - `code`
-- `doc`：所有非 code 来源，包括 `knowledge`、`conversation`、`experience`、`preference`、`tool_history`、`fact`
+- `doc`: all non-code sources, including `knowledge`, `conversation`, `experience`, `preference`, `tool_history`, and `fact`
 - `knowledge`
 - `conversation`
 - `experience`
@@ -136,7 +140,7 @@ go build -o bin/code-context-mcp ./cmd/code-context-mcp
 - `tool_history`
 - `fact`
 
-## CLI 命令
+## CLI Commands
 
 ```text
 code-context index <path>
@@ -153,44 +157,44 @@ code-context status <path>
 code-context clear <path>
 ```
 
-## 导入文档和长期记忆
+## Import Documentation and Long-Term Memory
 
-导入 Markdown 文档知识库：
+Import a Markdown documentation knowledge base:
 
 ```bash
 ./bin/code-context import knowledge /path/to/docs project-docs
 ```
 
-导入经验记忆：
+Import experience memory:
 
 ```bash
 cat > /tmp/agent-memory-experience.jsonl <<'EOF'
-{"id":"go-log-rule","content":"Go 日志文案应描述在前、参数在后","experience_kind":"domain","domain_path":"programming/go","tags":["go","logging"]}
+{"id":"go-log-rule","content":"Go log messages should put the description first and parameters after it","experience_kind":"domain","domain_path":"programming/go","tags":["go","logging"]}
 EOF
 
 ./bin/code-context import memory experience /tmp/agent-memory-experience.jsonl go-experience
 ```
 
-查看 source：
+List sources:
 
 ```bash
 ./bin/code-context source list
 ./bin/code-context source list knowledge
 ```
 
-清理 source：
+Clear a source:
 
 ```bash
 ./bin/code-context source clear knowledge project-docs
 ```
 
-## Embedding 配置
+## Embedding Configuration
 
-### 默认 hash embedder
+### Default Hash Embedder
 
-默认 `hash` provider 零依赖、可离线运行，适合快速验证流程，但语义效果较弱。
+The default `hash` provider has zero external dependencies and can run offline. It is useful for quick workflow validation, but its semantic quality is limited.
 
-### OpenAI-compatible Embedding
+### OpenAI-Compatible Embedding
 
 ```bash
 export AGENT_MEMORY_EMBEDDING_PROVIDER=openai-compatible
@@ -203,7 +207,7 @@ export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
 ./bin/code-context index /path/to/repo
 ```
 
-### Ollama 本地 Embedding
+### Local Ollama Embedding
 
 ```bash
 export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
@@ -214,11 +218,11 @@ ollama pull embeddinggemma
 ./bin/code-context index /path/to/repo
 ```
 
-## Vector Store 配置
+## Vector Store Configuration
 
-### 本地 JSON 存储
+### Local JSON Store
 
-默认 `local` vector store 会把索引数据写入本地目录，适合开发和单机试用。
+The default `local` vector store writes index data to a local directory, which is suitable for development and single-machine trials.
 
 ### Milvus
 
@@ -230,40 +234,40 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 ./bin/code-context index /path/to/repo
 ```
 
-如果使用内置 skill 安装脚本，可以选择 Milvus 运行模式：
+When using the built-in skill installer, you can choose the Milvus runtime mode:
 
 ```bash
-# Docker Compose 模式，适合接近 standalone 部署的本地环境
+# Docker Compose mode, suitable for local setups close to standalone deployment
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode docker \
   --embedding ollama
 
-# 本地非 Docker 模式，使用 Milvus Lite server 监听 localhost:19530
+# Local non-Docker mode, using a Milvus Lite server on localhost:19530
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode lite \
   --embedding ollama
 ```
 
-`--milvus-mode docker` 需要 Docker / Docker Desktop；`--milvus-mode lite` 会在安装目录创建 Python venv 并安装 `pymilvus[milvus-lite]`，适合 macOS、Windows 和 Linux 的本地小规模开发验证。
+`--milvus-mode docker` requires Docker / Docker Desktop. `--milvus-mode lite` creates a Python virtual environment under the install directory and installs `pymilvus[milvus-lite]`, which is suitable for small local development tests on macOS, Windows, and Linux.
 
 ## MCP Server
 
-Agent-Memory 提供 stdio MCP Server：
+Agent-Memory provides a stdio MCP server:
 
 ```bash
 ./bin/code-context-mcp
 ```
 
-当前 MCP tools：
+Current MCP tools:
 
-- `index_codebase`：索引或增量刷新本地代码库路径。
-- `search_code`：在已索引代码库中搜索代码片段。
-- `clear_index`：清理指定代码库的向量数据和 snapshot。
-- `get_indexing_status`：查询指定代码库索引状态。
+- `index_codebase`: index or incrementally refresh a local codebase path.
+- `search_code`: search code snippets in an indexed codebase.
+- `clear_index`: clear vector data and snapshots for a codebase.
+- `get_indexing_status`: query indexing status for a codebase.
 
-示例 MCP 配置片段：
+Example MCP configuration snippet:
 
 ```json
 {
@@ -275,37 +279,37 @@ Agent-Memory 提供 stdio MCP Server：
 }
 ```
 
-不同 MCP Client 的配置格式略有差异，请按对应客户端文档调整。
+Configuration formats vary across MCP clients. Adjust the snippet according to the target client documentation.
 
-## CodeBuddy / Codex Agent 闭环
+## CodeBuddy / Codex Agent Loop
 
-项目内置 `agent-memory-context` skill，可为 CodeBuddy 和 Codex 安装 hooks：
+The project includes the `agent-memory-context` skill, which can install hooks for CodeBuddy and Codex:
 
 ```bash
 python3 .codebuddy/skills/agent-memory-context/install.py --project-root .
 
-# 无 Docker 本地开发可选择 Milvus Lite
+# Choose Milvus Lite for local development without Docker
 python3 .codebuddy/skills/agent-memory-context/install.py --project-root . --milvus-mode lite
 ```
 
-安装后会把相关模板写入目标项目：
+The installer writes related templates into the target project:
 
 - `.codebuddy/settings.json`
 - `.codebuddy/rules/agent-memory-context.md`
 - `.codex/config.toml`
 - `AGENTS.md`
 
-运行时闭环：
+Runtime loop:
 
-1. `SessionStart`：检查索引，必要时初始化或增量同步。
-2. `UserPromptSubmit`：根据用户 prompt 搜索 Agent-Memory，并注入上下文。
-3. `Stop` / `SessionEnd`：任务结束时执行 `sync`，确保下一轮拿到最新内容。
+1. `SessionStart`: check the index and initialize or incrementally sync when needed.
+2. `UserPromptSubmit`: search Agent-Memory from the user prompt and inject the returned context.
+3. `Stop` / `SessionEnd`: run `sync` at task end so the next turn sees the latest content.
 
-更多说明见 `docs/agent_memory_skill_integration.md`。
+See `docs/agent_memory_skill_integration.md` for more details.
 
-## 召回质量评估
+## Recall Quality Evaluation
 
-创建评估集：
+Create an evaluation set:
 
 ```bash
 cat > /tmp/agent-memory-recall-eval.jsonl <<'EOF'
@@ -313,99 +317,101 @@ cat > /tmp/agent-memory-recall-eval.jsonl <<'EOF'
 EOF
 ```
 
-运行评估：
+Run evaluation:
 
 ```bash
 ./bin/code-context eval recall /path/to/repo /tmp/agent-memory-recall-eval.jsonl 10 code
 ```
 
-也支持部分 SWE-bench / claude-context 风格字段，例如 `instances`、`problem_statement`、`patch`、`oracles`、`oracle_files`。
+The evaluator also supports several SWE-bench / claude-context-style fields, such as `instances`, `problem_statement`, `patch`, `oracles`, and `oracle_files`.
 
-评估结果会输出召回质量指标和运行效率指标：质量指标包括 hit rate、precision、recall、F1、MRR、nDCG、文件级 precision/recall/F1；效率指标包括单 case 与汇总 latency、估算结果 token、结果字符数、结果数量、去重数量和搜索 namespace 数。
+Evaluation output includes recall quality metrics and runtime efficiency metrics. Quality metrics include hit rate, precision, recall, F1, MRR, nDCG, and file-level precision/recall/F1. Efficiency metrics include per-case and summary latency, estimated result tokens, result character counts, result counts, deduplicated counts, and searched namespace counts.
 
-## 常用环境变量
+## Common Environment Variables
 
-| 变量 | 说明 |
+| Variable | Description |
 | --- | --- |
-| `AGENT_MEMORY_CONFIG` | 指定配置文件路径 |
-| `AGENT_MEMORY_HOME` | 指定本地存储目录 |
+| `AGENT_MEMORY_CONFIG` | Config file path |
+| `AGENT_MEMORY_HOME` | Local storage directory |
 | `AGENT_MEMORY_EMBEDDING_PROVIDER` | `hash` / `openai` / `openai-compatible` / `ollama` |
-| `AGENT_MEMORY_OPENAI_BASE_URL` | OpenAI-compatible API 地址 |
-| `AGENT_MEMORY_OPENAI_API_KEY` | OpenAI-compatible API Key |
-| `AGENT_MEMORY_OPENAI_EMBEDDING_MODEL` | OpenAI-compatible embedding 模型 |
-| `AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS` | OpenAI-compatible 输出向量维度，默认 `1024` |
-| `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible 单次批量请求条数，默认 `10` |
-| `AGENT_MEMORY_OLLAMA_HOST` | Ollama 地址 |
-| `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding 模型 |
+| `AGENT_MEMORY_OPENAI_BASE_URL` | OpenAI-compatible API endpoint |
+| `AGENT_MEMORY_OPENAI_API_KEY` | OpenAI-compatible API key |
+| `AGENT_MEMORY_OPENAI_EMBEDDING_MODEL` | OpenAI-compatible embedding model |
+| `AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS` | OpenAI-compatible output vector dimensions, defaults to `1024` |
+| `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible batch size, defaults to `10` |
+| `AGENT_MEMORY_OLLAMA_HOST` | Ollama endpoint |
+| `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding model |
 | `AGENT_MEMORY_VECTOR_STORE` | `local` / `milvus` |
-| `AGENT_MEMORY_MILVUS_ADDRESS` | Milvus 地址 |
-| `AGENT_MEMORY_MILVUS_COLLECTION` | Milvus collection 名称 |
-| `AGENT_MEMORY_DEFAULT_SEARCH_TYPES` | 默认搜索类型 |
-| `AGENT_MEMORY_CUSTOM_EXTENSIONS` | 追加扫描扩展名，如 `.vue,.svelte` |
-| `AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS` | 追加忽略 glob，如 `private/**,*.backup` |
+| `AGENT_MEMORY_MILVUS_ADDRESS` | Milvus address |
+| `AGENT_MEMORY_MILVUS_COLLECTION` | Milvus collection name |
+| `AGENT_MEMORY_DEFAULT_SEARCH_TYPES` | Default search types |
+| `AGENT_MEMORY_CUSTOM_EXTENSIONS` | Additional extensions to scan, such as `.vue,.svelte` |
+| `AGENT_MEMORY_CUSTOM_IGNORE_PATTERNS` | Additional ignore globs, such as `private/**,*.backup` |
 
-## 项目结构
+## Project Layout
 
 ```text
 cmd/
-  code-context/      # CLI 入口
-  code-context-mcp/  # MCP stdio Server 入口
+  code-context/      # CLI entry point
+  code-context-mcp/  # MCP stdio server entry point
 internal/
   catalog/           # Source catalog
-  config/            # 配置加载和默认配置生成
-  contextdoc/        # 文档节点与知识类型模型
-  embed/             # Hash / OpenAI-compatible / Ollama embedder
-  indexer/           # 全量与增量索引流程
-  mcpserver/         # MCP stdio 协议与工具实现
-  scanner/           # 文件扫描和 ignore 规则
-  searcher/          # 向量与混合检索
-  snapshot/          # 索引快照
-  splitter/          # tree-sitter 与行级切块
-  vectorstore/       # Local / Milvus vector store
+  config/            # Config loading and default config generation
+  contextdoc/        # Document nodes and knowledge type models
+  embed/             # Hash / OpenAI-compatible / Ollama embedders
+  indexer/           # Full and incremental indexing pipeline
+  mcpserver/         # MCP stdio protocol and tool implementations
+  scanner/           # File scanning and ignore rules
+  searcher/          # Vector and hybrid retrieval
+  snapshot/          # Index snapshots
+  splitter/          # Tree-sitter and line-based chunking
+  vectorstore/       # Local / Milvus vector stores
 .codebuddy/skills/
-  agent-memory-context/ # CodeBuddy / Codex skill、hooks 和安装器
+  agent-memory-context/ # CodeBuddy / Codex skill, hooks, and installer
 ```
 
-## 开发
+## Development
 
 ```bash
-# 格式化
+# Format
 make fmt
 
-# 测试
+# Test
 make test
 
-# 构建 CLI
+# Build CLI
 make build
 
-# 构建 MCP Server
+# Build MCP server
 mkdir -p bin
 go build -o bin/code-context-mcp ./cmd/code-context-mcp
 ```
 
-项目开发规则见 `docs/development_rules.md`。
+Project development rules are documented in `docs/development_rules.md`.
 
 ## Roadmap
 
-- 更完整的 MCP tools：统一搜索代码、文档、经验、偏好和工具历史。
-- 更强的会话上下文构建：面向 prompt 自动生成结构化 context pack。
-- Source bundle 导出、导入、备份和跨设备同步。
-- 更多语言的 tree-sitter 结构切块。
-- 更完善的安装包、Release 二进制和平台兼容测试。
-- 参考 claude-context 增强代码搜索核心质量：补齐 BM25 / sparse vector、dense vector、RRF rerank 或可插拔 reranker 等能力。
-- 参考 claude-context 增强 Milvus 搜索：让 Milvus 后端支持真正的 hybrid search，并与本地搜索的关键词、路径、符号元数据融合策略保持一致。
-- 参考 claude-context 完善评估体系：补充 token、成本、延迟、工具调用次数、索引耗时、Agent 任务成功率等 benchmark，和现有 recall / precision / F1 / MRR / nDCG 指标形成闭环。
+- More complete MCP tools for unified search across code, docs, experience, preferences, and tool history.
+- Stronger session context construction that generates structured context packs for prompts.
+- Source bundle export, import, backup, and cross-device sync.
+- Tree-sitter structural chunking for more languages.
+- More complete packaging, release binaries, and platform compatibility tests.
+- Improve code search quality with ideas from claude-context: BM25 / sparse vectors, dense vectors, RRF rerank, or pluggable rerankers.
+- Improve Milvus search with ideas from claude-context: true hybrid search in the Milvus backend, aligned with local keyword, path, and symbol metadata fusion strategies.
+- Improve the evaluation system with ideas from claude-context: token, cost, latency, tool-call count, indexing duration, agent task success rate, and other benchmarks integrated with current recall / precision / F1 / MRR / nDCG metrics.
 
-## 文档
+## Documentation
 
-- `docs/design/overall_design.md`：整体设计。
-- `docs/modules/module_design.md`：模块细化设计。
-- `docs/development_rules.md`：项目开发规则。
-- `docs/development_log.md`：开发过程记录。
-- `docs/agent_memory_skill_integration.md`：Agent-Memory skill、CodeBuddy hooks 与 Codex hooks 集成说明。
+- `README.md`: default English README.
+- `README.zh-CN.md`: Chinese README.
+- `docs/design/overall_design.md`: overall design.
+- `docs/modules/module_design.md`: detailed module design.
+- `docs/development_rules.md`: project development rules.
+- `docs/development_log.md`: development log.
+- `docs/agent_memory_skill_integration.md`: Agent-Memory skill, CodeBuddy hooks, and Codex hooks integration guide.
 
 ## License
 
-本项目基于 [GNU General Public License v3.0](LICENSE) 开源。
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
-详见 [LICENSE](LICENSE) 文件。
+See [LICENSE](LICENSE) for details.
