@@ -65,6 +65,57 @@ func TestOpenAIEmbedder_EmbedBatch(t *testing.T) {
 	}
 }
 
+func TestOpenAIEmbedder_EmbedBatchSplitsRequests(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		var request openAIEmbeddingRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.Dimensions != 2 {
+			t.Fatalf("dimensions = %d, want 2", request.Dimensions)
+		}
+		if len(request.Input) > 2 {
+			t.Fatalf("batch size = %d, want <= 2", len(request.Input))
+		}
+
+		data := make([]openAIEmbeddingData, 0, len(request.Input))
+		for index := range request.Input {
+			data = append(data, openAIEmbeddingData{Index: index, Embedding: []float32{float32(requestCount), float32(index)}})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(openAIEmbeddingResponse{Data: data})
+	}))
+	defer server.Close()
+
+	embedder, err := NewOpenAIEmbedder(OpenAIOptions{
+		BaseURL:      server.URL,
+		APIKey:       "test-api-key-placeholder",
+		Model:        "test-model",
+		Dimensions:   2,
+		MaxBatchSize: 2,
+		HTTPClient:   server.Client(),
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAIEmbedder() error = %v", err)
+	}
+
+	vectors, err := embedder.EmbedBatch(context.Background(), []string{"first", "second", "third", "fourth", "fifth"})
+	if err != nil {
+		t.Fatalf("EmbedBatch() error = %v", err)
+	}
+	if requestCount != 3 {
+		t.Fatalf("requestCount = %d, want 3", requestCount)
+	}
+	if len(vectors) != 5 {
+		t.Fatalf("len(vectors) = %d, want 5", len(vectors))
+	}
+	if vectors[0][0] != 1 || vectors[2][0] != 2 || vectors[4][0] != 3 {
+		t.Fatalf("vectors = %v, want split request markers", vectors)
+	}
+}
+
 func TestOpenAIEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

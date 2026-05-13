@@ -114,9 +114,11 @@ func newEmbedder(cfg config.Config) (embed.Embedder, error) {
 		return embed.NewHashEmbedder(cfg.EmbeddingDimension), nil
 	case "openai", "openai-compatible":
 		return embed.NewOpenAIEmbedder(embed.OpenAIOptions{
-			BaseURL: cfg.OpenAIBaseURL,
-			APIKey:  cfg.OpenAIAPIKey,
-			Model:   cfg.OpenAIEmbeddingModel,
+			BaseURL:      cfg.OpenAIBaseURL,
+			APIKey:       cfg.OpenAIAPIKey,
+			Model:        cfg.OpenAIEmbeddingModel,
+			Dimensions:   cfg.OpenAIEmbeddingDimensions,
+			MaxBatchSize: cfg.OpenAIMaxBatchSize,
 		})
 	case "ollama":
 		return embed.NewOllamaEmbedder(embed.OllamaOptions{

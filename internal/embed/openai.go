@@ -22,6 +22,7 @@ import (
 const (
 	defaultOpenAIBaseURL        = "https://api.openai.com/v1"
 	defaultOpenAIEmbeddingModel = "text-embedding-3-small"
+	defaultOpenAIMaxBatchSize   = 10
 	defaultOpenAIHTTPTimeout    = 60 * time.Second
 	maxOpenAIResponseBytes      = 16 << 20
 	maxOpenAIErrorPreviewBytes  = 512
@@ -29,20 +30,24 @@ const (
 
 // OpenAIOptions 表示 OpenAI-compatible embedding 客户端配置。
 type OpenAIOptions struct {
-	BaseURL    string
-	APIKey     string
-	Model      string
-	HTTPClient *http.Client
+	BaseURL      string
+	APIKey       string
+	Model        string
+	Dimensions   int
+	MaxBatchSize int
+	HTTPClient   *http.Client
 }
 
 // OpenAIEmbedder 通过 OpenAI-compatible embeddings API 生成文本向量。
 type OpenAIEmbedder struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
-	dimension  int
-	mu         sync.RWMutex
+	baseURL             string
+	apiKey              string
+	model               string
+	requestedDimensions int
+	maxBatchSize        int
+	httpClient          *http.Client
+	dimension           int
+	mu                  sync.RWMutex
 }
 
 // NewOpenAIEmbedder 创建 OpenAI-compatible embedding 客户端。
@@ -61,16 +66,23 @@ func NewOpenAIEmbedder(options OpenAIOptions) (*OpenAIEmbedder, error) {
 		model = defaultOpenAIEmbeddingModel
 	}
 
+	maxBatchSize := options.MaxBatchSize
+	if maxBatchSize <= 0 {
+		maxBatchSize = defaultOpenAIMaxBatchSize
+	}
+
 	httpClient := options.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultOpenAIHTTPTimeout}
 	}
 
 	return &OpenAIEmbedder{
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		apiKey:     apiKey,
-		model:      model,
-		httpClient: httpClient,
+		baseURL:             strings.TrimRight(baseURL, "/"),
+		apiKey:              apiKey,
+		model:               model,
+		requestedDimensions: options.Dimensions,
+		maxBatchSize:        maxBatchSize,
+		httpClient:          httpClient,
 	}, nil
 }
 
@@ -89,7 +101,24 @@ func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		return [][]float32{}, nil
 	}
 
-	requestBody, err := json.Marshal(openAIEmbeddingRequest{Model: e.model, Input: texts})
+	vectors := make([][]float32, 0, len(texts))
+	for start := 0; start < len(texts); start += e.maxBatchSize {
+		end := min(start+e.maxBatchSize, len(texts))
+		batchVectors, err := e.embedBatch(ctx, texts[start:end])
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, batchVectors...)
+	}
+	return vectors, nil
+}
+
+func (e *OpenAIEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	requestBody, err := json.Marshal(openAIEmbeddingRequest{
+		Model:      e.model,
+		Input:      texts,
+		Dimensions: e.requestedDimensions,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +207,10 @@ func (e *OpenAIEmbedder) orderedEmbeddings(payload openAIEmbeddingResponse, text
 }
 
 func (e *OpenAIEmbedder) updateDimension(dimension int) error {
+	if e.requestedDimensions > 0 && dimension != e.requestedDimensions {
+		return fmt.Errorf("openai embedding dimension mismatch: requested=%d current=%d", e.requestedDimensions, dimension)
+	}
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.dimension == 0 {
@@ -206,8 +239,9 @@ func parseOpenAIError(statusCode int, responseBody []byte) error {
 }
 
 type openAIEmbeddingRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
+	Model      string   `json:"model"`
+	Input      []string `json:"input"`
+	Dimensions int      `json:"dimensions,omitempty"`
 }
 
 type openAIEmbeddingResponse struct {

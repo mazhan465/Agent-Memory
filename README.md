@@ -197,6 +197,8 @@ export AGENT_MEMORY_EMBEDDING_PROVIDER=openai-compatible
 export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1
 export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
+export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
 
 ./bin/code-context index /path/to/repo
 ```
@@ -331,6 +333,8 @@ EOF
 | `AGENT_MEMORY_OPENAI_BASE_URL` | OpenAI-compatible API 地址 |
 | `AGENT_MEMORY_OPENAI_API_KEY` | OpenAI-compatible API Key |
 | `AGENT_MEMORY_OPENAI_EMBEDDING_MODEL` | OpenAI-compatible embedding 模型 |
+| `AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS` | OpenAI-compatible 输出向量维度，默认 `1024` |
+| `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible 单次批量请求条数，默认 `10` |
 | `AGENT_MEMORY_OLLAMA_HOST` | Ollama 地址 |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding 模型 |
 | `AGENT_MEMORY_VECTOR_STORE` | `local` / `milvus` |

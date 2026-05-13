@@ -23,6 +23,8 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envOpenAIBaseURL, "https://example.com/v1")
 	t.Setenv(envOpenAIAPIKey, " test-api-key-placeholder ")
 	t.Setenv(envOpenAIEmbeddingModel, "text-embedding-test")
+	t.Setenv(envOpenAIEmbeddingDimensions, "768")
+	t.Setenv(envOpenAIMaxBatchSize, "5")
 	t.Setenv(envOllamaHost, " http://localhost:11434 ")
 	t.Setenv(envOllamaEmbeddingModel, "nomic-embed-text")
 	t.Setenv(envMilvusAddress, "127.0.0.1:19530")
@@ -58,6 +60,12 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	}
 	if cfg.OpenAIEmbeddingModel != "text-embedding-test" {
 		t.Fatalf("OpenAIEmbeddingModel = %s, want text-embedding-test", cfg.OpenAIEmbeddingModel)
+	}
+	if cfg.OpenAIEmbeddingDimensions != 768 {
+		t.Fatalf("OpenAIEmbeddingDimensions = %d, want 768", cfg.OpenAIEmbeddingDimensions)
+	}
+	if cfg.OpenAIMaxBatchSize != 5 {
+		t.Fatalf("OpenAIMaxBatchSize = %d, want 5", cfg.OpenAIMaxBatchSize)
 	}
 	if cfg.OllamaHost != "http://localhost:11434" {
 		t.Fatalf("OllamaHost = %s, want http://localhost:11434", cfg.OllamaHost)
@@ -102,6 +110,15 @@ func TestDefaultCodeSearchStrategyPrefersKeywords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
+	if cfg.EmbeddingDimension != 1024 {
+		t.Fatalf("EmbeddingDimension = %d, want 1024", cfg.EmbeddingDimension)
+	}
+	if cfg.OpenAIEmbeddingDimensions != 1024 {
+		t.Fatalf("OpenAIEmbeddingDimensions = %d, want 1024", cfg.OpenAIEmbeddingDimensions)
+	}
+	if cfg.OpenAIMaxBatchSize != 10 {
+		t.Fatalf("OpenAIMaxBatchSize = %d, want 10", cfg.OpenAIMaxBatchSize)
+	}
 	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
 	if codeStrategy.SemanticWeight != 0.3 || codeStrategy.KeywordWeight != 0.7 {
 		t.Fatalf("code strategy = %+v, want semantic=0.3 keyword=0.7", codeStrategy)
@@ -119,6 +136,8 @@ embedding:
     base_url: https://example.com/v1
     api_key: yaml-api-key-placeholder
     model: text-embedding-3-large
+    dimensions: 1536
+    max_batch_size: 6
   ollama:
     host: http://localhost:11435
     model: nomic-embed-text
@@ -171,6 +190,9 @@ search:
 	if cfg.OpenAIAPIKey != "yaml-api-key-placeholder" || cfg.OpenAIEmbeddingModel != "text-embedding-3-large" {
 		t.Fatalf("openai config = key:%s model:%s", cfg.OpenAIAPIKey, cfg.OpenAIEmbeddingModel)
 	}
+	if cfg.OpenAIEmbeddingDimensions != 1536 || cfg.OpenAIMaxBatchSize != 6 {
+		t.Fatalf("openai dimensions/batch = %d/%d, want 1536/6", cfg.OpenAIEmbeddingDimensions, cfg.OpenAIMaxBatchSize)
+	}
 	if cfg.VectorStoreProvider != "milvus" || cfg.MilvusCollection != "yaml_collection" {
 		t.Fatalf("vector store config = %s/%s", cfg.VectorStoreProvider, cfg.MilvusCollection)
 	}
@@ -215,6 +237,8 @@ func TestWriteDefaultFile(t *testing.T) {
 		"# - openai-compatible:",
 		"# - ollama:",
 		"  # openai:",
+		"  #   dimensions: 1024",
+		"  #   max_batch_size: 10",
 		"  # ollama:",
 		"  # milvus:",
 		"default_types:",
@@ -255,6 +279,8 @@ func setIsolatedHome(t *testing.T) {
 		envOpenAIBaseURL,
 		envOpenAIAPIKey,
 		envOpenAIEmbeddingModel,
+		envOpenAIEmbeddingDimensions,
+		envOpenAIMaxBatchSize,
 		envOllamaHost,
 		envOllamaEmbeddingModel,
 		envMilvusAddress,

@@ -33,9 +33,11 @@ type embeddingConfig struct {
 }
 
 type openAIConfig struct {
-	BaseURL string `yaml:"base_url"`
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
+	BaseURL      string `yaml:"base_url"`
+	APIKey       string `yaml:"api_key"`
+	Model        string `yaml:"model"`
+	Dimensions   int    `yaml:"dimensions"`
+	MaxBatchSize int    `yaml:"max_batch_size"`
 }
 
 type ollamaConfig struct {
@@ -113,24 +115,26 @@ func defaultConfig() (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		StorageDir:           storageDir,
-		EmbeddingProvider:    defaultEmbeddingProvider,
-		VectorStoreProvider:  defaultVectorStoreProvider,
-		EmbeddingDimension:   defaultEmbeddingDim,
-		OpenAIBaseURL:        defaultOpenAIBaseURL,
-		OpenAIEmbeddingModel: defaultOpenAIEmbeddingModel,
-		OllamaHost:           defaultOllamaHost,
-		OllamaEmbeddingModel: defaultOllamaEmbeddingModel,
-		MilvusAddress:        defaultMilvusAddress,
-		MilvusCollection:     defaultMilvusCollection,
-		MaxChunkLines:        defaultMaxChunkLines,
-		ChunkOverlapLines:    defaultChunkOverlap,
-		SearchLimit:          defaultSearchLimit,
-		DefaultSearchTypes:   []string{"all"},
-		SearchStrategies:     defaultSearchStrategies(),
-		SupportedExts:        defaultSupportedExts(),
-		IgnoreNames:          defaultIgnoreNames(),
-		IgnorePatterns:       defaultIgnorePatterns(),
+		StorageDir:                storageDir,
+		EmbeddingProvider:         defaultEmbeddingProvider,
+		VectorStoreProvider:       defaultVectorStoreProvider,
+		EmbeddingDimension:        defaultEmbeddingDim,
+		OpenAIBaseURL:             defaultOpenAIBaseURL,
+		OpenAIEmbeddingModel:      defaultOpenAIEmbeddingModel,
+		OpenAIEmbeddingDimensions: defaultOpenAIEmbeddingDimensions,
+		OpenAIMaxBatchSize:        defaultOpenAIMaxBatchSize,
+		OllamaHost:                defaultOllamaHost,
+		OllamaEmbeddingModel:      defaultOllamaEmbeddingModel,
+		MilvusAddress:             defaultMilvusAddress,
+		MilvusCollection:          defaultMilvusCollection,
+		MaxChunkLines:             defaultMaxChunkLines,
+		ChunkOverlapLines:         defaultChunkOverlap,
+		SearchLimit:               defaultSearchLimit,
+		DefaultSearchTypes:        []string{"all"},
+		SearchStrategies:          defaultSearchStrategies(),
+		SupportedExts:             defaultSupportedExts(),
+		IgnoreNames:               defaultIgnoreNames(),
+		IgnorePatterns:            defaultIgnorePatterns(),
 	}, nil
 }
 
@@ -190,6 +194,12 @@ func applyEmbeddingConfig(cfg *Config, fileCfg embeddingConfig) {
 	}
 	if value := strings.TrimSpace(fileCfg.OpenAI.Model); value != "" {
 		cfg.OpenAIEmbeddingModel = value
+	}
+	if fileCfg.OpenAI.Dimensions > 0 {
+		cfg.OpenAIEmbeddingDimensions = fileCfg.OpenAI.Dimensions
+	}
+	if fileCfg.OpenAI.MaxBatchSize > 0 {
+		cfg.OpenAIMaxBatchSize = fileCfg.OpenAI.MaxBatchSize
 	}
 	if value := strings.TrimSpace(fileCfg.Ollama.Host); value != "" {
 		cfg.OllamaHost = value
@@ -274,6 +284,8 @@ func applyEnvConfig(cfg *Config) {
 		cfg.OpenAIAPIKey = apiKey
 	}
 	cfg.OpenAIEmbeddingModel = getString(envOpenAIEmbeddingModel, cfg.OpenAIEmbeddingModel)
+	cfg.OpenAIEmbeddingDimensions = getPositiveInt(envOpenAIEmbeddingDimensions, cfg.OpenAIEmbeddingDimensions)
+	cfg.OpenAIMaxBatchSize = getPositiveInt(envOpenAIMaxBatchSize, cfg.OpenAIMaxBatchSize)
 	cfg.OllamaHost = getString(envOllamaHost, cfg.OllamaHost)
 	cfg.OllamaEmbeddingModel = getString(envOllamaEmbeddingModel, cfg.OllamaEmbeddingModel)
 	cfg.MilvusAddress = getString(envMilvusAddress, cfg.MilvusAddress)
@@ -326,6 +338,8 @@ func writeEmbeddingConfig(builder *strings.Builder, cfg Config) {
 	fmt.Fprintf(builder, "  #   base_url: %q\n", cfg.OpenAIBaseURL)
 	builder.WriteString("  #   api_key: \"\"\n")
 	fmt.Fprintf(builder, "  #   model: %q\n", cfg.OpenAIEmbeddingModel)
+	fmt.Fprintf(builder, "  #   dimensions: %d\n", cfg.OpenAIEmbeddingDimensions)
+	fmt.Fprintf(builder, "  #   max_batch_size: %d\n", cfg.OpenAIMaxBatchSize)
 	builder.WriteString("\n")
 	builder.WriteString("  # provider 为 ollama 时启用；默认不启用。\n")
 	builder.WriteString("  # ollama:\n")

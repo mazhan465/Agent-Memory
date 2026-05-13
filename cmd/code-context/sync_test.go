@@ -15,7 +15,7 @@ import (
 )
 
 func TestRunSyncRequiresExistingIndex(t *testing.T) {
-	t.Setenv("AGENT_MEMORY_HOME", t.TempDir())
+	setSyncTestEnv(t)
 	repoPath := t.TempDir()
 	writeSyncTestFile(t, filepath.Join(repoPath, "main.go"), "package main\n")
 
@@ -26,7 +26,7 @@ func TestRunSyncRequiresExistingIndex(t *testing.T) {
 }
 
 func TestRunSyncUpdatesIndexedPath(t *testing.T) {
-	t.Setenv("AGENT_MEMORY_HOME", t.TempDir())
+	setSyncTestEnv(t)
 	repoPath := t.TempDir()
 	writeSyncTestFile(t, filepath.Join(repoPath, "main.go"), "package main\n\nfunc A() {}\n")
 
@@ -37,6 +37,13 @@ func TestRunSyncUpdatesIndexedPath(t *testing.T) {
 	if err := run(context.Background(), []string{"sync", repoPath}); err != nil {
 		t.Fatalf("run sync error = %v", err)
 	}
+}
+
+func setSyncTestEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("AGENT_MEMORY_HOME", t.TempDir())
+	t.Setenv("AGENT_MEMORY_EMBEDDING_PROVIDER", "hash")
+	t.Setenv("AGENT_MEMORY_VECTOR_STORE", "local")
 }
 
 func writeSyncTestFile(t *testing.T, path string, content string) {
