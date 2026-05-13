@@ -48,21 +48,50 @@ APIs and data formats may still evolve. Feedback and improvement suggestions bas
 
 ## Quick Start
 
-### 1. Install the CLI
+Install Agent-Memory first, then let your AI assistant use it automatically. Pick one of the following installation paths.
 
-The recommended path is to use GitHub Release binaries directly. This path does not require a Go toolchain:
+### 1. Manual Installation with the Python Installer
+
+This is the recommended path for most users. The installer downloads GitHub Release binaries, installs `code-context` / `code-context-mcp` into an install `bin` directory, adds that directory to `PATH`, installs the `agent-memory-context` skill and hooks into the target project, and guides embedding and Milvus setup.
 
 ```bash
 git clone https://github.com/mazhan465/Agent-Memory.git
 cd Agent-Memory
 
 python3 .codebuddy/skills/agent-memory-context/install.py \
-  --project-root . \
+  --project-root /path/to/your/project \
+  --milvus-mode lite \
+  --embedding ollama \
+  --yes
+```
+
+For a CLI-only trial without hooks or Milvus:
+
+```bash
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root /path/to/your/project \
   --skip-hooks \
   --skip-milvus \
   --embedding hash \
   --yes
 ```
+
+Useful installer options:
+
+- `--install-root <dir>`: where binaries, `agent-memory.env`, and Milvus runtime files are installed.
+- `--version <tag|latest>`: which GitHub Release to download.
+- `--milvus-mode docker|lite|binary-guide`: choose Docker Compose, local Milvus Lite, or a manual Linux binary guide.
+- `--embedding hash|ollama|openai-compatible`: choose the embedding provider.
+- `--install-ollama`: try to install Ollama and pull the configured embedding model.
+
+Base requirements:
+
+- Git.
+- Python 3, required for the installer, skill/hooks installation, and Milvus Lite.
+- Docker / Docker Desktop, required only for `--milvus-mode docker`.
+- Ollama, required only for `--embedding ollama` unless `--install-ollama` succeeds.
+- An OpenAI-compatible API key, required only for `--embedding openai-compatible`.
+- Go 1.25+, required only for source builds or development.
 
 If you need to build from source, install Go 1.25+ and run:
 
@@ -74,58 +103,118 @@ mkdir -p bin
 go build -o bin/code-context-mcp ./cmd/code-context-mcp
 ```
 
-Base requirements:
+### 2. AI-Assisted Installation Guide
 
-- Git
-- Python 3, required for installing skills/hooks, running Milvus Lite, or using the installer
-- Go 1.25+, required only for source builds or development
-- Docker / Docker Desktop, required only when using Milvus in Docker mode
+If you want an AI coding assistant to install Agent-Memory for you, give it these instructions:
 
-### 2. Initialize Configuration
+1. Download the GitHub Release archive matching the current platform from `https://github.com/mazhan465/Agent-Memory/releases`.
+2. Extract `code-context` and `code-context-mcp`, place them in a directory on `PATH` such as `~/.agent-memory/bin`, and make them executable on Unix-like systems with `chmod +x`.
+3. Verify `code-context config path` works. If `PATH` cannot be changed, set `AGENT_MEMORY_CODE_CONTEXT_BIN=/absolute/path/to/code-context` for hooks or agent commands.
+4. Install the `agent-memory-context` skill into the target project and connect it to the assistant's hook system. If the Python installer is available, the AI may run it with `--skip-binary` after the binaries are already on `PATH`; otherwise it should copy the skill directory and adapt the hook templates for the target assistant.
+5. For hook-capable assistants, wire equivalent events:
+   - session start: ensure the repository is indexed or incrementally synced;
+   - user prompt: search `code` plus `doc` context with a shared `session_id`;
+   - session stop/end: write `conversation`, extract `experience` / `preference` / `tool_history` / `fact`, then run incremental `sync`.
+6. If the assistant does not support hooks, use MCP configuration, startup instructions, wrapper commands, or scheduled automations as substitutes. The substitute must still automate `code` search, `knowledge` import when explicitly requested, `experience` / conversation memory writes, and final `sync`.
+
+Minimum hook-equivalent CLI flow:
 
 ```bash
-./bin/code-context config init
-./bin/code-context config path
+code-context index /path/to/repo
+code-context search /path/to/repo "<user task>" 8 code
+code-context search /path/to/repo "<user task>" 8 doc --session-id=<session_id>
+code-context import knowledge /path/to/docs project-docs   # only when the user explicitly asks
+code-context import memory experience /path/to/experience.jsonl project-experience
+code-context sync /path/to/repo
+```
+
+### 3. Choose Embedding and Vector Store
+
+Choose the embedding provider and vector store before the first large index:
+
+| Scenario | Embedding | Vector store | Dependencies |
+| --- | --- | --- | --- |
+| Quick offline trial | `hash` | `local` | none beyond the binary |
+| Private local development | `ollama` | `local` or `milvus` Lite | Ollama and the selected model; Python 3 for Milvus Lite |
+| Larger local or team setup | `openai-compatible` or `ollama` | `milvus` Docker / remote Milvus | API key or Ollama; Docker / Docker Desktop or a reachable Milvus service |
+
+Hash embedding is convenient but has limited semantic quality. For real agent workflows, prefer Ollama local embeddings or an OpenAI-compatible embedding API, and use Milvus when the indexed corpus is large or shared across tools.
+
+Example Ollama setup:
+
+```bash
+export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
+export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
+export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+
+ollama pull embeddinggemma
+```
+
+Example OpenAI-compatible setup:
+
+```bash
+export AGENT_MEMORY_EMBEDDING_PROVIDER=openai-compatible
+export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1
+export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
+export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
+```
+
+Example Milvus setup:
+
+```bash
+export AGENT_MEMORY_VECTOR_STORE=milvus
+export AGENT_MEMORY_MILVUS_ADDRESS=localhost:19530
+export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
+```
+
+Use `--milvus-mode lite` for a small local non-Docker setup, `--milvus-mode docker` for local standalone Milvus, or configure `AGENT_MEMORY_MILVUS_ADDRESS` to point to an existing Milvus service.
+
+### 4. Initialize Configuration
+
+```bash
+code-context config init
+code-context config path
 ```
 
 The default config file is stored under `.AgentMemory/config.yaml` in the user home directory. You can also set `AGENT_MEMORY_CONFIG` to point to another path. Environment variables have higher priority than config files.
 
-### 3. Index a Codebase
+### 5. Index a Codebase
 
 ```bash
-./bin/code-context index /path/to/repo
+code-context index /path/to/repo
 ```
 
 Check indexing status:
 
 ```bash
-./bin/code-context status /path/to/repo
+code-context status /path/to/repo
 ```
 
 Run incremental sync later:
 
 ```bash
-./bin/code-context sync /path/to/repo
+code-context sync /path/to/repo
 # Or sync all indexed paths
-./bin/code-context sync --all
+code-context sync --all
 ```
 
-### 4. Search Context
+### 6. Search Context
 
 ```bash
-./bin/code-context search /path/to/repo "where is authentication handled"
+code-context search /path/to/repo "where is authentication handled"
 ```
 
 Specify result count and search type:
 
 ```bash
-./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge
+code-context search /path/to/repo "Milvus vector store" 5 knowledge
 ```
 
 Reuse a `session_id` for session-level deduplication:
 
 ```bash
-./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
+code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
 ```
 
 Available search types:

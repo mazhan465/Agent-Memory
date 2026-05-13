@@ -48,21 +48,50 @@ Agent-Memory 目前处于可运行的 MVP / early preview 阶段，适合：
 
 ## 快速开始
 
-### 1. 安装 CLI
+先安装 Agent-Memory，再让 AI 助手自动使用它。请选择下面其中一种安装方式。
 
-推荐直接使用 GitHub Release 二进制文件；这种方式不需要 Go 环境：
+### 1. 通过 Python 安装脚本手工安装
+
+这是大多数用户推荐使用的方式。安装脚本会从 GitHub Release 下载二进制文件，把 `code-context` / `code-context-mcp` 安装到安装目录的 `bin` 下并加入 `PATH`，同时把 `agent-memory-context` skill 和 hooks 安装到目标项目，并引导配置 embedding 与 Milvus。
 
 ```bash
 git clone https://github.com/mazhan465/Agent-Memory.git
 cd Agent-Memory
 
 python3 .codebuddy/skills/agent-memory-context/install.py \
-  --project-root . \
+  --project-root /path/to/your/project \
+  --milvus-mode lite \
+  --embedding ollama \
+  --yes
+```
+
+如果只想快速试用 CLI，不安装 hooks 和 Milvus：
+
+```bash
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root /path/to/your/project \
   --skip-hooks \
   --skip-milvus \
   --embedding hash \
   --yes
 ```
+
+常用安装参数：
+
+- `--install-root <dir>`：指定二进制、`agent-memory.env` 和 Milvus 运行文件安装位置。
+- `--version <tag|latest>`：指定下载哪个 GitHub Release。
+- `--milvus-mode docker|lite|binary-guide`：选择 Docker Compose、本地 Milvus Lite 或 Linux 手工二进制安装指引。
+- `--embedding hash|ollama|openai-compatible`：选择 embedding provider。
+- `--install-ollama`：尝试安装 Ollama 并拉取配置的 embedding 模型。
+
+基础要求：
+
+- Git。
+- Python 3（运行安装脚本、安装 skill/hooks、使用 Milvus Lite 时需要）。
+- Docker / Docker Desktop（仅 `--milvus-mode docker` 需要）。
+- Ollama（仅 `--embedding ollama` 需要；如果 `--install-ollama` 成功则无需手工安装）。
+- OpenAI-compatible API Key（仅 `--embedding openai-compatible` 需要）。
+- Go 1.25+（仅源码构建或开发时需要）。
 
 如果需要从源码构建，再安装 Go 1.25+ 并执行：
 
@@ -74,58 +103,118 @@ mkdir -p bin
 go build -o bin/code-context-mcp ./cmd/code-context-mcp
 ```
 
-基础要求：
+### 2. AI 安装指导
 
-- Git
-- Python 3（安装 skill / hooks、Milvus Lite 或运行安装器时需要）
-- Go 1.25+（仅源码构建或开发时需要）
-- Docker / Docker Desktop（仅使用 Milvus Docker 模式时需要）
+如果希望 AI 编程助手代为安装 Agent-Memory，请把下面指令交给它：
 
-### 2. 初始化配置
+1. 从 `https://github.com/mazhan465/Agent-Memory/releases` 下载匹配当前平台的 GitHub Release 压缩包。
+2. 解压 `code-context` 和 `code-context-mcp`，放到 `PATH` 中的目录，例如 `~/.agent-memory/bin`；类 Unix 系统需要执行 `chmod +x`。
+3. 验证 `code-context config path` 可运行。如果无法修改 `PATH`，为 hooks 或 Agent 命令设置 `AGENT_MEMORY_CODE_CONTEXT_BIN=/absolute/path/to/code-context`。
+4. 把 `agent-memory-context` skill 安装到目标项目，并接入当前 AI 助手的 hook 系统。如果可以使用 Python 安装脚本，二进制已在 `PATH` 后可带 `--skip-binary` 执行安装脚本；否则复制 skill 目录并按目标助手适配 hook 模板。
+5. 对支持 hooks 的助手，接入等价事件：
+   - 会话启动：确保代码库已索引或已增量同步；
+   - 用户 prompt：使用同一个 `session_id` 查询 `code` 和 `doc` 上下文；
+   - 会话停止/结束：写入 `conversation`，提炼 `experience` / `preference` / `tool_history` / `fact`，再执行增量 `sync`。
+6. 如果当前助手不支持 hooks，使用 MCP 配置、启动指令、包装命令或定时自动化作为替代。替代方案仍必须自动完成 `code` 查询、用户明确要求时的 `knowledge` 导入、`experience` / 会话记忆写入，以及最终 `sync`。
+
+最小 hook 等价 CLI 流程：
 
 ```bash
-./bin/code-context config init
-./bin/code-context config path
+code-context index /path/to/repo
+code-context search /path/to/repo "<user task>" 8 code
+code-context search /path/to/repo "<user task>" 8 doc --session-id=<session_id>
+code-context import knowledge /path/to/docs project-docs   # 仅在用户明确要求时执行
+code-context import memory experience /path/to/experience.jsonl project-experience
+code-context sync /path/to/repo
+```
+
+### 3. 选择 Embedding 和向量存储
+
+首次大规模索引前，请先选择合适的 embedding provider 与向量存储：
+
+| 场景 | Embedding | 向量存储 | 依赖 |
+| --- | --- | --- | --- |
+| 离线快速试用 | `hash` | `local` | 除二进制外无额外依赖 |
+| 本地私有开发 | `ollama` | `local` 或 Milvus Lite | Ollama 和所选模型；Milvus Lite 需要 Python 3 |
+| 更大的本地或团队场景 | `openai-compatible` 或 `ollama` | Milvus Docker / 远端 Milvus | API Key 或 Ollama；Docker / Docker Desktop 或可访问的 Milvus 服务 |
+
+Hash embedding 方便但语义质量有限。真实 Agent 工作流建议优先选择 Ollama 本地 embedding 或 OpenAI-compatible embedding API；当索引规模较大或需要多工具共享时，建议使用 Milvus。
+
+Ollama 示例：
+
+```bash
+export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
+export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
+export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+
+ollama pull embeddinggemma
+```
+
+OpenAI-compatible 示例：
+
+```bash
+export AGENT_MEMORY_EMBEDDING_PROVIDER=openai-compatible
+export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1
+export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
+export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
+```
+
+Milvus 示例：
+
+```bash
+export AGENT_MEMORY_VECTOR_STORE=milvus
+export AGENT_MEMORY_MILVUS_ADDRESS=localhost:19530
+export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
+```
+
+小规模本地非 Docker 环境可用 `--milvus-mode lite`，本地 standalone Milvus 可用 `--milvus-mode docker`，已有 Milvus 服务则配置 `AGENT_MEMORY_MILVUS_ADDRESS` 指向该服务。
+
+### 4. 初始化配置
+
+```bash
+code-context config init
+code-context config path
 ```
 
 默认配置文件位于用户目录下的 `.AgentMemory/config.yaml`，也可以用 `AGENT_MEMORY_CONFIG` 指定其他路径。环境变量优先级高于配置文件。
 
-### 3. 索引代码库
+### 5. 索引代码库
 
 ```bash
-./bin/code-context index /path/to/repo
+code-context index /path/to/repo
 ```
 
 查看索引状态：
 
 ```bash
-./bin/code-context status /path/to/repo
+code-context status /path/to/repo
 ```
 
 后续增量同步：
 
 ```bash
-./bin/code-context sync /path/to/repo
+code-context sync /path/to/repo
 # 或同步所有已索引路径
-./bin/code-context sync --all
+code-context sync --all
 ```
 
-### 4. 搜索上下文
+### 6. 搜索上下文
 
 ```bash
-./bin/code-context search /path/to/repo "where is authentication handled"
+code-context search /path/to/repo "where is authentication handled"
 ```
 
 指定返回数量和搜索类型：
 
 ```bash
-./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge
+code-context search /path/to/repo "Milvus vector store" 5 knowledge
 ```
 
 复用 `session_id` 做会话级去重：
 
 ```bash
-./bin/code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
+code-context search /path/to/repo "Milvus vector store" 5 knowledge --session-id=session-dev
 ```
 
 可用搜索类型：
