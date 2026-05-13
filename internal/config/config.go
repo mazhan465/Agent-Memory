@@ -29,6 +29,7 @@ const (
 	defaultOpenAIMaxBatchSize        = 10
 	defaultOllamaHost                = "http://127.0.0.1:11434"
 	defaultOllamaEmbeddingModel      = "embeddinggemma"
+	defaultOllamaEmbeddingDimensions = 0
 	defaultMilvusAddress             = "localhost:19530"
 	defaultMilvusCollection          = "agent_memory_chunks"
 	envConfigPath                    = "AGENT_MEMORY_CONFIG"
@@ -43,6 +44,7 @@ const (
 	envOpenAIMaxBatchSize            = "AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE"
 	envOllamaHost                    = "AGENT_MEMORY_OLLAMA_HOST"
 	envOllamaEmbeddingModel          = "AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL"
+	envOllamaEmbeddingDimensions     = "AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS"
 	envMilvusAddress                 = "AGENT_MEMORY_MILVUS_ADDRESS"
 	envMilvusUsername                = "AGENT_MEMORY_MILVUS_USERNAME"
 	envMilvusPassword                = "AGENT_MEMORY_MILVUS_PASSWORD"
@@ -71,6 +73,7 @@ type Config struct {
 	OpenAIMaxBatchSize        int
 	OllamaHost                string
 	OllamaEmbeddingModel      string
+	OllamaEmbeddingDimensions int
 	MilvusAddress             string
 	MilvusUsername            string
 	MilvusPassword            string

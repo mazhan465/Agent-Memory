@@ -27,6 +27,7 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envOpenAIMaxBatchSize, "5")
 	t.Setenv(envOllamaHost, " http://localhost:11434 ")
 	t.Setenv(envOllamaEmbeddingModel, "nomic-embed-text")
+	t.Setenv(envOllamaEmbeddingDimensions, "384")
 	t.Setenv(envMilvusAddress, "127.0.0.1:19530")
 	t.Setenv(envMilvusUsername, " test-user ")
 	t.Setenv(envMilvusPassword, " test-password-placeholder ")
@@ -72,6 +73,9 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	}
 	if cfg.OllamaEmbeddingModel != "nomic-embed-text" {
 		t.Fatalf("OllamaEmbeddingModel = %s, want nomic-embed-text", cfg.OllamaEmbeddingModel)
+	}
+	if cfg.OllamaEmbeddingDimensions != 384 {
+		t.Fatalf("OllamaEmbeddingDimensions = %d, want 384", cfg.OllamaEmbeddingDimensions)
 	}
 	if cfg.MilvusAddress != "127.0.0.1:19530" {
 		t.Fatalf("MilvusAddress = %s, want 127.0.0.1:19530", cfg.MilvusAddress)
@@ -141,6 +145,7 @@ embedding:
   ollama:
     host: http://localhost:11435
     model: nomic-embed-text
+    dimensions: 384
 vector_store:
   provider: milvus
   milvus:
@@ -193,6 +198,9 @@ search:
 	if cfg.OpenAIEmbeddingDimensions != 1536 || cfg.OpenAIMaxBatchSize != 6 {
 		t.Fatalf("openai dimensions/batch = %d/%d, want 1536/6", cfg.OpenAIEmbeddingDimensions, cfg.OpenAIMaxBatchSize)
 	}
+	if cfg.OllamaEmbeddingDimensions != 384 {
+		t.Fatalf("OllamaEmbeddingDimensions = %d, want 384", cfg.OllamaEmbeddingDimensions)
+	}
 	if cfg.VectorStoreProvider != "milvus" || cfg.MilvusCollection != "yaml_collection" {
 		t.Fatalf("vector store config = %s/%s", cfg.VectorStoreProvider, cfg.MilvusCollection)
 	}
@@ -240,6 +248,7 @@ func TestWriteDefaultFile(t *testing.T) {
 		"  #   dimensions: 1024",
 		"  #   max_batch_size: 10",
 		"  # ollama:",
+		"  #   dimensions: 0",
 		"  # milvus:",
 		"default_types:",
 		"external_knowledge:",
@@ -283,6 +292,7 @@ func setIsolatedHome(t *testing.T) {
 		envOpenAIMaxBatchSize,
 		envOllamaHost,
 		envOllamaEmbeddingModel,
+		envOllamaEmbeddingDimensions,
 		envMilvusAddress,
 		envMilvusUsername,
 		envMilvusPassword,

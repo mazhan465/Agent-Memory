@@ -50,7 +50,7 @@ def main() -> int:
 
     embedding = choose_embedding(args)
     write_env_file(install_root, embedding, args)
-    maybe_install_ollama(args, embedding)
+    maybe_install_ollama(args, install_root, embedding)
     print_next_steps(project_root, install_root, embedding)
     return 0
 
@@ -97,7 +97,26 @@ def parse_args() -> argparse.Namespace:
         help="Embedding provider to configure",
     )
     parser.add_argument("--install-ollama", action="store_true", help="Try to install Ollama and pull an embedding model")
+    parser.add_argument(
+        "--ollama-mode",
+        default="auto",
+        choices=["auto", "host", "docker", "skip"],
+        help="Ollama runtime mode: host binary, Docker container, skip, or auto",
+    )
+    parser.add_argument(
+        "--ollama-accelerator",
+        default="auto",
+        choices=["auto", "cpu", "nvidia", "amd-rocm"],
+        help="Ollama Docker acceleration profile",
+    )
+    parser.add_argument("--no-start-ollama", action="store_true", help="Install Ollama files but do not start Ollama")
     parser.add_argument("--ollama-model", default="embeddinggemma", help="Ollama embedding model to pull/configure")
+    parser.add_argument(
+        "--ollama-dimensions",
+        type=positive_int,
+        default=0,
+        help="Optional Ollama /api/embed dimensions value; 0 uses the model default",
+    )
     parser.add_argument("--openai-base-url", default="https://api.openai.com/v1", help="OpenAI-compatible base URL")
     parser.add_argument("--openai-model", default="text-embedding-3-small", help="OpenAI-compatible embedding model")
     parser.add_argument("--yes", "-y", action="store_true", help="Accept safe installer prompts")
@@ -135,6 +154,13 @@ def default_python_cmd() -> str:
     if platform.system().lower() == "windows":
         return "python"
     return "python3"
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value must be >= 0")
+    return parsed
 
 
 def install_project_assets(skill_dir: Path, project_root: Path, python_cmd: str) -> None:
@@ -691,6 +717,8 @@ def write_env_file(install_root: Path, embedding: str, args: argparse.Namespace)
             "AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434",
             f"AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL={args.ollama_model}",
         ])
+        if args.ollama_dimensions > 0:
+            lines.append(f"AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS={args.ollama_dimensions}")
     if embedding in {"openai", "openai-compatible"}:
         lines.extend([
             f"AGENT_MEMORY_OPENAI_BASE_URL={args.openai_base_url}",
@@ -702,8 +730,12 @@ def write_env_file(install_root: Path, embedding: str, args: argparse.Namespace)
     print(f"Wrote environment guide: {env_path}")
 
 
-def maybe_install_ollama(args: argparse.Namespace, embedding: str) -> None:
-    if embedding != "ollama":
+def maybe_install_ollama(args: argparse.Namespace, install_root: Path, embedding: str) -> None:
+    if embedding != "ollama" or args.ollama_mode == "skip":
+        return
+    mode = resolve_ollama_mode(args)
+    if mode == "docker":
+        install_ollama_docker(args, install_root)
         return
     if args.install_ollama:
         install_ollama_runtime()
@@ -714,6 +746,124 @@ def maybe_install_ollama(args: argparse.Namespace, embedding: str) -> None:
         print(f"  ollama pull {args.ollama_model}")
 
 
+def resolve_ollama_mode(args: argparse.Namespace) -> str:
+    if args.ollama_mode != "auto":
+        return args.ollama_mode
+    if args.install_ollama and normalized_os() == "linux":
+        return "docker"
+    return "host"
+
+
+def install_ollama_docker(args: argparse.Namespace, install_root: Path) -> None:
+    ollama_dir = install_root / "ollama"
+    ollama_dir.mkdir(parents=True, exist_ok=True)
+    compose_path = ollama_dir / "docker-compose.yml"
+    accelerator = resolve_ollama_accelerator(args.ollama_accelerator)
+    compose_path.write_text(render_ollama_compose(accelerator), encoding="utf-8")
+    print(f"Wrote Ollama compose: {compose_path}")
+    print_ollama_accelerator_note(accelerator)
+    if args.no_start_ollama:
+        print(f"Ollama compose saved. Start it with: docker compose -f {compose_path} up -d")
+        return
+    if not shutil.which("docker"):
+        print("Docker was not found. Install Docker Desktop or Docker Engine, then run:")
+        print(f"  docker compose -f {compose_path} up -d")
+        return
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(compose_path), "up", "-d"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        print(f"WARNING: Ollama docker compose failed: {result.stderr.strip()}")
+        print(f"Retry manually: docker compose -f {compose_path} up -d")
+        return
+    print("Ollama started at http://127.0.0.1:11434")
+    wait_for_ollama("http://127.0.0.1:11434")
+    pull_ollama_model_docker(args.ollama_model)
+
+
+def resolve_ollama_accelerator(requested: str) -> str:
+    if requested != "auto":
+        return requested
+    if normalized_os() == "linux":
+        if shutil.which("nvidia-smi"):
+            return "nvidia"
+        if Path("/dev/kfd").exists() and Path("/dev/dri").exists():
+            return "amd-rocm"
+    return "cpu"
+
+
+def render_ollama_compose(accelerator: str) -> str:
+    image = "ollama/ollama:rocm" if accelerator == "amd-rocm" else "ollama/ollama"
+    lines = [
+        "services:",
+        "  ollama:",
+        f"    image: {image}",
+        "    container_name: agent-memory-ollama",
+        "    restart: unless-stopped",
+        "    ports:",
+        "      - \"11434:11434\"",
+        "    volumes:",
+        "      - ollama:/root/.ollama",
+    ]
+    if accelerator == "nvidia":
+        lines.append("    gpus: all")
+    if accelerator == "amd-rocm":
+        lines.extend([
+            "    devices:",
+            "      - /dev/kfd:/dev/kfd",
+            "      - /dev/dri:/dev/dri",
+        ])
+    lines.extend(["volumes:", "  ollama:", ""])
+    return "\n".join(lines)
+
+
+def print_ollama_accelerator_note(accelerator: str) -> None:
+    if accelerator == "nvidia":
+        print("Ollama Docker accelerator: NVIDIA. Ensure NVIDIA Container Toolkit is installed.")
+        return
+    if accelerator == "amd-rocm":
+        print("Ollama Docker accelerator: AMD ROCm. Ensure /dev/kfd and /dev/dri are available on Linux.")
+        return
+    if normalized_os() == "darwin":
+        print("Ollama Docker accelerator: CPU. Use host Ollama on macOS if you need Apple Silicon GPU acceleration.")
+    else:
+        print("Ollama Docker accelerator: CPU.")
+
+
+def wait_for_ollama(host: str) -> None:
+    deadline = time.time() + 30
+    endpoint = host.rstrip("/") + "/api/version"
+    while time.time() < deadline:
+        try:
+            with urlopen(endpoint, timeout=2):
+                return
+        except (OSError, URLError):
+            time.sleep(1)
+    print(f"WARNING: Ollama health check timed out: {endpoint}")
+
+
+def pull_ollama_model_docker(model: str) -> None:
+    model = model.strip()
+    if not model:
+        return
+    result = subprocess.run(
+        ["docker", "exec", "agent-memory-ollama", "ollama", "pull", model],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        print(f"Pulled Ollama model: {model}")
+    else:
+        print(f"WARNING: failed to pull Ollama model {model}: {result.stderr.strip()}")
+        print(f"Retry manually: docker exec agent-memory-ollama ollama pull {model}")
+
+
 def install_ollama_runtime() -> None:
     system = normalized_os()
     if system == "darwin" and shutil.which("brew"):
@@ -722,7 +872,7 @@ def install_ollama_runtime() -> None:
     if system == "windows" and shutil.which("winget"):
         subprocess.run(["winget", "install", "-e", "--id", "Ollama.Ollama"], check=False)
         return
-    print("Automatic Ollama install is not available on this platform. Install from https://ollama.com")
+    print("Automatic host Ollama install is not available on this platform. Install from https://ollama.com")
 
 
 def print_next_steps(project_root: Path, install_root: Path, embedding: str) -> None:
@@ -739,7 +889,7 @@ def print_next_steps(project_root: Path, install_root: Path, embedding: str) -> 
     if embedding == "hash":
         print("6. hash embedding is only for quick trial; choose Ollama or OpenAI-compatible embeddings for better recall.")
     elif embedding == "ollama":
-        print("6. Ensure Ollama is running before indexing.")
+        print("6. Ensure Ollama is running before indexing; Docker mode listens on http://127.0.0.1:11434.")
     else:
         print("6. Replace AGENT_MEMORY_OPENAI_API_KEY in the env file before indexing.")
 

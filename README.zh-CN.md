@@ -76,6 +76,21 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
   --yes
 ```
 
+如果希望二进制文件本地运行、Milvus 和 Ollama 由 Docker 启动：
+
+```bash
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root /path/to/your/project \
+  --milvus-mode docker \
+  --embedding ollama \
+  --ollama-mode docker \
+  --ollama-accelerator auto \
+  --ollama-model embeddinggemma \
+  --yes
+```
+
+Linux NVIDIA 环境可使用 `--ollama-accelerator nvidia`，需要 NVIDIA Container Toolkit；Linux ROCm 环境可使用 `--ollama-accelerator amd-rocm`。macOS Docker 只能走 CPU，如需 Apple Silicon GPU 加速建议使用宿主机 Ollama。
+
 常用安装参数：
 
 - `--install-root <dir>`：指定二进制、`agent-memory.env` 和 Milvus 运行文件安装位置。
@@ -83,13 +98,16 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
 - `--milvus-mode docker|lite|binary-guide`：选择 Docker Compose、本地 Milvus Lite 或 Linux 手工二进制安装指引。
 - `--embedding hash|ollama|openai-compatible`：选择 embedding provider。
 - `--install-ollama`：尝试安装 Ollama 并拉取配置的 embedding 模型。
+- `--ollama-mode auto|host|docker|skip`：使用宿主机 Ollama、Docker Ollama 或跳过 Ollama 设置。
+- `--ollama-accelerator auto|cpu|nvidia|amd-rocm`：选择 Ollama Docker 加速 profile。
+- `--ollama-dimensions <n>`：可选 `/api/embed` dimensions 参数；`0` 表示使用模型默认维度。
 
 基础要求：
 
 - Git。
 - Python 3（运行安装脚本、安装 skill/hooks、使用 Milvus Lite 时需要）。
-- Docker / Docker Desktop（仅 `--milvus-mode docker` 需要）。
-- Ollama（仅 `--embedding ollama` 需要；如果 `--install-ollama` 成功则无需手工安装）。
+- Docker / Docker Desktop（`--milvus-mode docker` 或 `--ollama-mode docker` 需要）。
+- Ollama（仅 `--embedding ollama` 需要；如果宿主机或 Docker 安装流程已启动则无需手工安装）。
 - OpenAI-compatible API Key（仅 `--embedding openai-compatible` 需要）。
 - Go 1.25+（仅源码构建或开发时需要）。
 
@@ -146,6 +164,8 @@ Ollama 示例：
 export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
 export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
 export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+# 如果所用 Ollama 模型支持 /api/embed dimensions，可按需开启。
+export AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS=384
 
 ollama pull embeddinggemma
 ```
@@ -302,6 +322,8 @@ export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
 export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
 export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
 export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+# 如果所用 Ollama 模型支持 /api/embed dimensions，可按需开启。
+export AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS=384
 
 ollama pull embeddinggemma
 ./bin/code-context index /path/to/repo
@@ -323,23 +345,25 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 ./bin/code-context index /path/to/repo
 ```
 
-如果使用内置 skill 安装脚本，可以选择 Milvus 运行模式：
+如果使用内置 skill 安装脚本，可以选择 Milvus 和 Ollama 运行模式：
 
 ```bash
-# Docker Compose 模式，适合接近 standalone 部署的本地环境
+# Docker 依赖模式：本地二进制 + Docker Milvus + Docker Ollama。
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode docker \
-  --embedding ollama
+  --embedding ollama \
+  --ollama-mode docker \
+  --ollama-accelerator auto
 
-# 本地非 Docker 模式，使用 Milvus Lite server 监听 localhost:19530
+# 本地非 Docker Milvus 模式，使用 Milvus Lite server 监听 localhost:19530。
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode lite \
   --embedding ollama
 ```
 
-`--milvus-mode docker` 需要 Docker / Docker Desktop；`--milvus-mode lite` 会在安装目录创建 Python venv 并安装 `pymilvus[milvus-lite]`，适合 macOS、Windows 和 Linux 的本地小规模开发验证。
+`--milvus-mode docker` 和 `--ollama-mode docker` 需要 Docker / Docker Desktop。Ollama Docker 支持 `cpu`、`nvidia`、`amd-rocm` 三类加速 profile；NVIDIA 需要 NVIDIA Container Toolkit，AMD ROCm 需要 Linux `/dev/kfd` 和 `/dev/dri`，macOS Docker 会使用 CPU。`--milvus-mode lite` 会在安装目录创建 Python venv 并安装 `pymilvus[milvus-lite]`，适合 macOS、Windows 和 Linux 的本地小规模开发验证。
 
 ## MCP Server
 
@@ -430,6 +454,7 @@ EOF
 | `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible 单次批量请求条数，默认 `10` |
 | `AGENT_MEMORY_OLLAMA_HOST` | Ollama 地址 |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding 模型 |
+| `AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS` | 可选 Ollama `/api/embed` 输出维度；`0` 或未设置表示使用模型默认维度 |
 | `AGENT_MEMORY_VECTOR_STORE` | `local` / `milvus` |
 | `AGENT_MEMORY_MILVUS_ADDRESS` | Milvus 地址 |
 | `AGENT_MEMORY_MILVUS_COLLECTION` | Milvus collection 名称 |

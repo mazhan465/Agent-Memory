@@ -76,6 +76,21 @@ python3 .codebuddy/skills/agent-memory-context/install.py \
   --yes
 ```
 
+To run the binary locally while starting Milvus and Ollama through Docker:
+
+```bash
+python3 .codebuddy/skills/agent-memory-context/install.py \
+  --project-root /path/to/your/project \
+  --milvus-mode docker \
+  --embedding ollama \
+  --ollama-mode docker \
+  --ollama-accelerator auto \
+  --ollama-model embeddinggemma \
+  --yes
+```
+
+Use `--ollama-accelerator nvidia` on Linux hosts with NVIDIA Container Toolkit and `--ollama-accelerator amd-rocm` on Linux ROCm hosts. macOS Docker uses CPU; use host Ollama if you need Apple Silicon GPU acceleration.
+
 Useful installer options:
 
 - `--install-root <dir>`: where binaries, `agent-memory.env`, and Milvus runtime files are installed.
@@ -83,13 +98,16 @@ Useful installer options:
 - `--milvus-mode docker|lite|binary-guide`: choose Docker Compose, local Milvus Lite, or a manual Linux binary guide.
 - `--embedding hash|ollama|openai-compatible`: choose the embedding provider.
 - `--install-ollama`: try to install Ollama and pull the configured embedding model.
+- `--ollama-mode auto|host|docker|skip`: use a host Ollama binary, a Docker Ollama container, or skip Ollama setup.
+- `--ollama-accelerator auto|cpu|nvidia|amd-rocm`: choose the Ollama Docker acceleration profile.
+- `--ollama-dimensions <n>`: optional `/api/embed` dimensions value; `0` keeps the model default.
 
 Base requirements:
 
 - Git.
 - Python 3, required for the installer, skill/hooks installation, and Milvus Lite.
-- Docker / Docker Desktop, required only for `--milvus-mode docker`.
-- Ollama, required only for `--embedding ollama` unless `--install-ollama` succeeds.
+- Docker / Docker Desktop, required for `--milvus-mode docker` or `--ollama-mode docker`.
+- Ollama, required only for `--embedding ollama` unless host or Docker installation starts it.
 - An OpenAI-compatible API key, required only for `--embedding openai-compatible`.
 - Go 1.25+, required only for source builds or development.
 
@@ -146,6 +164,8 @@ Example Ollama setup:
 export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
 export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
 export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+# Optional when the Ollama model supports /api/embed dimensions.
+export AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS=384
 
 ollama pull embeddinggemma
 ```
@@ -302,6 +322,8 @@ export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
 export AGENT_MEMORY_EMBEDDING_PROVIDER=ollama
 export AGENT_MEMORY_OLLAMA_HOST=http://127.0.0.1:11434
 export AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL=embeddinggemma
+# Optional when the Ollama model supports /api/embed dimensions.
+export AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS=384
 
 ollama pull embeddinggemma
 ./bin/code-context index /path/to/repo
@@ -323,23 +345,25 @@ export AGENT_MEMORY_MILVUS_COLLECTION=agent_memory_chunks
 ./bin/code-context index /path/to/repo
 ```
 
-When using the built-in skill installer, you can choose the Milvus runtime mode:
+When using the built-in skill installer, you can choose the Milvus and Ollama runtime modes:
 
 ```bash
-# Docker Compose mode, suitable for local setups close to standalone deployment
+# Docker dependencies: local binary + Docker Milvus + Docker Ollama.
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode docker \
-  --embedding ollama
+  --embedding ollama \
+  --ollama-mode docker \
+  --ollama-accelerator auto
 
-# Local non-Docker mode, using a Milvus Lite server on localhost:19530
+# Local non-Docker Milvus mode, using a Milvus Lite server on localhost:19530.
 python3 .codebuddy/skills/agent-memory-context/install.py \
   --project-root . \
   --milvus-mode lite \
   --embedding ollama
 ```
 
-`--milvus-mode docker` requires Docker / Docker Desktop. `--milvus-mode lite` creates a Python virtual environment under the install directory and installs `pymilvus[milvus-lite]`, which is suitable for small local development tests on macOS, Windows, and Linux.
+`--milvus-mode docker` and `--ollama-mode docker` require Docker / Docker Desktop. Ollama Docker supports `cpu`, `nvidia`, and `amd-rocm` acceleration profiles; NVIDIA requires NVIDIA Container Toolkit, AMD ROCm requires Linux `/dev/kfd` and `/dev/dri`, and macOS Docker runs Ollama on CPU. `--milvus-mode lite` creates a Python virtual environment under the install directory and installs `pymilvus[milvus-lite]`, which is suitable for small local development tests on macOS, Windows, and Linux.
 
 ## MCP Server
 
@@ -430,6 +454,7 @@ Evaluation output includes recall quality metrics and runtime efficiency metrics
 | `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible batch size, defaults to `10` |
 | `AGENT_MEMORY_OLLAMA_HOST` | Ollama endpoint |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding model |
+| `AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS` | Optional Ollama `/api/embed` output dimensions; `0` or unset uses the model default |
 | `AGENT_MEMORY_VECTOR_STORE` | `local` / `milvus` |
 | `AGENT_MEMORY_MILVUS_ADDRESS` | Milvus address |
 | `AGENT_MEMORY_MILVUS_COLLECTION` | Milvus collection name |

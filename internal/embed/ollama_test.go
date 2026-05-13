@@ -33,15 +33,24 @@ func TestOllamaEmbedder_EmbedBatch(t *testing.T) {
 		if strings.Join(request.Input, ",") != "first,second" {
 			t.Fatalf("input = %v, want [first second]", request.Input)
 		}
+		if request.Dimensions != 384 {
+			t.Fatalf("dimensions = %d, want 384", request.Dimensions)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ollamaEmbedResponse{Embeddings: [][]float32{{1, 0}, {0, 1}}})
+		_ = json.NewEncoder(w).Encode(ollamaEmbedResponse{
+			Embeddings: [][]float32{
+				make([]float32, 384),
+				make([]float32, 384),
+			},
+		})
 	}))
 	defer server.Close()
 
 	embedder, err := NewOllamaEmbedder(OllamaOptions{
 		Host:       server.URL,
 		Model:      "test-model",
+		Dimensions: 384,
 		HTTPClient: server.Client(),
 	})
 	if err != nil {
@@ -54,11 +63,11 @@ func TestOllamaEmbedder_EmbedBatch(t *testing.T) {
 	if len(vectors) != 2 {
 		t.Fatalf("len(vectors) = %d, want 2", len(vectors))
 	}
-	if vectors[0][0] != 1 || vectors[0][1] != 0 || vectors[1][0] != 0 || vectors[1][1] != 1 {
-		t.Fatalf("vectors = %v, want ordered embeddings", vectors)
+	if len(vectors[0]) != 384 || len(vectors[1]) != 384 {
+		t.Fatalf("vector dimensions = %d/%d, want 384/384", len(vectors[0]), len(vectors[1]))
 	}
-	if embedder.Dimension() != 2 {
-		t.Fatalf("Dimension() = %d, want 2", embedder.Dimension())
+	if embedder.Dimension() != 384 {
+		t.Fatalf("Dimension() = %d, want 384", embedder.Dimension())
 	}
 }
 

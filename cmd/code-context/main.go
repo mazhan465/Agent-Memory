@@ -122,8 +122,9 @@ func newEmbedder(cfg config.Config) (embed.Embedder, error) {
 		})
 	case "ollama":
 		return embed.NewOllamaEmbedder(embed.OllamaOptions{
-			Host:  cfg.OllamaHost,
-			Model: cfg.OllamaEmbeddingModel,
+			Host:       cfg.OllamaHost,
+			Model:      cfg.OllamaEmbeddingModel,
+			Dimensions: cfg.OllamaEmbeddingDimensions,
 		})
 	default:
 		return nil, fmt.Errorf("unsupported embedding provider %q", cfg.EmbeddingProvider)

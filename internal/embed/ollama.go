@@ -31,16 +31,18 @@ const (
 type OllamaOptions struct {
 	Host       string
 	Model      string
+	Dimensions int
 	HTTPClient *http.Client
 }
 
 // OllamaEmbedder 通过 Ollama /api/embed 生成文本向量。
 type OllamaEmbedder struct {
-	host       string
-	model      string
-	httpClient *http.Client
-	dimension  int
-	mu         sync.RWMutex
+	host                string
+	model               string
+	requestedDimensions int
+	httpClient          *http.Client
+	dimension           int
+	mu                  sync.RWMutex
 }
 
 // NewOllamaEmbedder 创建 Ollama embedding 客户端。
@@ -61,9 +63,10 @@ func NewOllamaEmbedder(options OllamaOptions) (*OllamaEmbedder, error) {
 		httpClient = &http.Client{Timeout: defaultOllamaHTTPTimeout}
 	}
 	return &OllamaEmbedder{
-		host:       strings.TrimRight(host, "/"),
-		model:      model,
-		httpClient: httpClient,
+		host:                strings.TrimRight(host, "/"),
+		model:               model,
+		requestedDimensions: options.Dimensions,
+		httpClient:          httpClient,
 	}, nil
 }
 
@@ -81,7 +84,11 @@ func (e *OllamaEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
-	requestBody, err := json.Marshal(ollamaEmbedRequest{Model: e.model, Input: texts})
+	requestBody, err := json.Marshal(ollamaEmbedRequest{
+		Model:      e.model,
+		Input:      texts,
+		Dimensions: e.requestedDimensions,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -155,6 +162,10 @@ func (e *OllamaEmbedder) orderedEmbeddings(payload ollamaEmbedResponse, textCoun
 }
 
 func (e *OllamaEmbedder) updateDimension(dimension int) error {
+	if e.requestedDimensions > 0 && dimension != e.requestedDimensions {
+		return fmt.Errorf("ollama embedding dimension mismatch: requested=%d current=%d", e.requestedDimensions, dimension)
+	}
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.dimension == 0 {
@@ -183,8 +194,9 @@ func parseOllamaError(statusCode int, responseBody []byte) error {
 }
 
 type ollamaEmbedRequest struct {
-	Model string   `json:"model"`
-	Input []string `json:"input"`
+	Model      string   `json:"model"`
+	Input      []string `json:"input"`
+	Dimensions int      `json:"dimensions,omitempty"`
 }
 
 type ollamaEmbedResponse struct {

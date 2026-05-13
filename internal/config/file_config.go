@@ -41,8 +41,9 @@ type openAIConfig struct {
 }
 
 type ollamaConfig struct {
-	Host  string `yaml:"host"`
-	Model string `yaml:"model"`
+	Host       string `yaml:"host"`
+	Model      string `yaml:"model"`
+	Dimensions int    `yaml:"dimensions"`
 }
 
 type vectorStoreConfig struct {
@@ -125,6 +126,7 @@ func defaultConfig() (Config, error) {
 		OpenAIMaxBatchSize:        defaultOpenAIMaxBatchSize,
 		OllamaHost:                defaultOllamaHost,
 		OllamaEmbeddingModel:      defaultOllamaEmbeddingModel,
+		OllamaEmbeddingDimensions: defaultOllamaEmbeddingDimensions,
 		MilvusAddress:             defaultMilvusAddress,
 		MilvusCollection:          defaultMilvusCollection,
 		MaxChunkLines:             defaultMaxChunkLines,
@@ -207,6 +209,9 @@ func applyEmbeddingConfig(cfg *Config, fileCfg embeddingConfig) {
 	if value := strings.TrimSpace(fileCfg.Ollama.Model); value != "" {
 		cfg.OllamaEmbeddingModel = value
 	}
+	if fileCfg.Ollama.Dimensions > 0 {
+		cfg.OllamaEmbeddingDimensions = fileCfg.Ollama.Dimensions
+	}
 }
 
 func applyVectorStoreConfig(cfg *Config, fileCfg vectorStoreConfig) {
@@ -288,6 +293,7 @@ func applyEnvConfig(cfg *Config) {
 	cfg.OpenAIMaxBatchSize = getPositiveInt(envOpenAIMaxBatchSize, cfg.OpenAIMaxBatchSize)
 	cfg.OllamaHost = getString(envOllamaHost, cfg.OllamaHost)
 	cfg.OllamaEmbeddingModel = getString(envOllamaEmbeddingModel, cfg.OllamaEmbeddingModel)
+	cfg.OllamaEmbeddingDimensions = getPositiveInt(envOllamaEmbeddingDimensions, cfg.OllamaEmbeddingDimensions)
 	cfg.MilvusAddress = getString(envMilvusAddress, cfg.MilvusAddress)
 	if username := strings.TrimSpace(os.Getenv(envMilvusUsername)); username != "" {
 		cfg.MilvusUsername = username
@@ -344,7 +350,8 @@ func writeEmbeddingConfig(builder *strings.Builder, cfg Config) {
 	builder.WriteString("  # provider 为 ollama 时启用；默认不启用。\n")
 	builder.WriteString("  # ollama:\n")
 	fmt.Fprintf(builder, "  #   host: %q\n", cfg.OllamaHost)
-	fmt.Fprintf(builder, "  #   model: %q\n\n", cfg.OllamaEmbeddingModel)
+	fmt.Fprintf(builder, "  #   model: %q\n", cfg.OllamaEmbeddingModel)
+	fmt.Fprintf(builder, "  #   dimensions: %d  # 0 表示使用模型默认维度。\n\n", cfg.OllamaEmbeddingDimensions)
 }
 
 func writeVectorStoreConfig(builder *strings.Builder, cfg Config) {
