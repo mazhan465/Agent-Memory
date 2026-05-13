@@ -117,7 +117,9 @@ func TestOpenAIEmbedder_EmbedBatchSplitsRequests(t *testing.T) {
 }
 
 func TestOpenAIEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
+	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(openAIErrorResponse{Error: openAIError{Message: "bad request"}})
 	}))
@@ -135,5 +137,9 @@ func TestOpenAIEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
 	_, err = embedder.EmbedBatch(context.Background(), []string{"text"})
 	if err == nil || !strings.Contains(err.Error(), "bad request") {
 		t.Fatalf("EmbedBatch() error = %v, want bad request", err)
+	}
+	wantRequests := defaultEmbeddingRequestRetries + 1
+	if requestCount != wantRequests {
+		t.Fatalf("requestCount = %d, want %d", requestCount, wantRequests)
 	}
 }

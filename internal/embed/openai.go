@@ -104,7 +104,10 @@ func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	vectors := make([][]float32, 0, len(texts))
 	for start := 0; start < len(texts); start += e.maxBatchSize {
 		end := min(start+e.maxBatchSize, len(texts))
-		batchVectors, err := e.embedBatch(ctx, texts[start:end])
+		batchTexts := texts[start:end]
+		batchVectors, err := retryEmbeddingRequest(ctx, e.Provider(), func(ctx context.Context) ([][]float32, error) {
+			return e.embedBatch(ctx, batchTexts)
+		})
 		if err != nil {
 			return nil, err
 		}

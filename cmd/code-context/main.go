@@ -210,7 +210,11 @@ func (a *app) indexPath(ctx context.Context, rootPath string) (indexer.Stats, er
 	lineSplitter := splitter.NewLineSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines)
 	splitterInstance := splitter.NewTreeSitterSplitter(a.config.MaxChunkLines, a.config.ChunkOverlapLines, lineSplitter)
 	indexerInstance := indexer.New(scannerInstance, splitterInstance, a.embedder, a.vectorStore, a.snapshotStore)
-	return indexerInstance.Index(ctx, rootPath)
+	stats, err := indexerInstance.Index(ctx, rootPath)
+	if err != nil {
+		return indexer.Stats{}, fmt.Errorf("index path failed: path=%s: %w", rootPath, err)
+	}
+	return stats, nil
 }
 
 func printIndexStats(prefix string, stats indexer.Stats) {

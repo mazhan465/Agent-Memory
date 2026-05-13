@@ -84,6 +84,12 @@ func (e *OllamaEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
+	return retryEmbeddingRequest(ctx, e.Provider(), func(ctx context.Context) ([][]float32, error) {
+		return e.embedBatch(ctx, texts)
+	})
+}
+
+func (e *OllamaEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	requestBody, err := json.Marshal(ollamaEmbedRequest{
 		Model:      e.model,
 		Input:      texts,

@@ -8,8 +8,10 @@ package indexer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,6 +167,43 @@ func TestIndexerIndexMigratesHashSnapshotToFileStates(t *testing.T) {
 	}
 }
 
+func TestIndexerIndexReturnsEmbeddingErrorAndMarksFailed(t *testing.T) {
+	ctx := context.Background()
+	repoPath := t.TempDir()
+	storagePath := t.TempDir()
+	writeIndexerTestFile(t, filepath.Join(repoPath, "a.go"), "package main\n\nfunc A() {}\n")
+
+	snapshotStore := snapshot.NewStore(storagePath)
+	indexer := New(
+		scanner.New([]string{".go"}, nil),
+		splitter.NewLineSplitter(20, 0),
+		&failingEmbedder{err: errors.New("embedding service unavailable")},
+		vectorstore.NewLocalStore(storagePath),
+		snapshotStore,
+	)
+	_, err := indexer.Index(ctx, repoPath)
+	if err == nil {
+		t.Fatal("Index() error = nil, want embedding error")
+	}
+	if !strings.Contains(err.Error(), "embed file chunks failed") || !strings.Contains(err.Error(), "embedding service unavailable") {
+		t.Fatalf("Index() error = %v, want embedding context", err)
+	}
+	namespace, _, err := NamespaceForPath(repoPath)
+	if err != nil {
+		t.Fatalf("NamespaceForPath() error = %v", err)
+	}
+	info, err := snapshotStore.Get(namespace)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if info.Status != snapshot.StatusFailed {
+		t.Fatalf("status = %s, want failed", info.Status)
+	}
+	if !strings.Contains(info.ErrorMessage, "embedding service unavailable") {
+		t.Fatalf("ErrorMessage = %q, want embedding service error", info.ErrorMessage)
+	}
+}
+
 type countingEmbedder struct {
 	inner      *embed.HashEmbedder
 	batchCalls int
@@ -189,6 +228,26 @@ func (e *countingEmbedder) Dimension() int {
 
 func (e *countingEmbedder) Provider() string {
 	return e.inner.Provider()
+}
+
+type failingEmbedder struct {
+	err error
+}
+
+func (e *failingEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	return nil, e.err
+}
+
+func (e *failingEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	return nil, e.err
+}
+
+func (e *failingEmbedder) Dimension() int {
+	return 0
+}
+
+func (e *failingEmbedder) Provider() string {
+	return "failing"
 }
 
 func writeIndexerTestFile(t *testing.T, path string, content string) {

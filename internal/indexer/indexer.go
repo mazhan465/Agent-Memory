@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -91,12 +92,14 @@ func (i *Indexer) Index(ctx context.Context, rootPath string) (Stats, error) {
 
 	files, err := i.scanner.Scan(absolutePath)
 	if err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 
 	if !hasIncrementalSnapshot {
-		fileDataList := readFileData(files)
+		fileDataList, err := readFileData(files)
+		if err != nil {
+			return Stats{}, i.failIndex(namespace, absolutePath, err)
+		}
 		fileStates := fileStateMap(fileDataList)
 		return i.indexFull(ctx, namespace, absolutePath, fileDataList, fileHashesFromStates(fileStates), fileStates)
 	}
@@ -133,12 +136,10 @@ func (i *Indexer) indexFull(
 ) (Stats, error) {
 	documents, err := i.buildDocuments(ctx, namespace, fileDataList)
 	if err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	if err := i.vectorStore.Put(ctx, namespace, documents); err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	stats := Stats{
 		Namespace:    namespace,
@@ -148,7 +149,7 @@ func (i *Indexer) indexFull(
 		FullReindex:  true,
 	}
 	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
-		return Stats{}, err
+		return Stats{}, fmt.Errorf("save index snapshot failed: %w", err)
 	}
 	return stats, nil
 }
@@ -163,7 +164,10 @@ func (i *Indexer) indexIncremental(
 	if len(previousInfo.FileStates) == 0 {
 		return i.indexIncrementalFromHashes(ctx, namespace, absolutePath, previousInfo.FileHashes, files)
 	}
-	changes, fileStates, changedData := detectFileStateChanges(previousInfo.FileStates, files)
+	changes, fileStates, changedData, err := detectFileStateChanges(previousInfo.FileStates, files)
+	if err != nil {
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
+	}
 	return i.applyIncrementalChanges(ctx, namespace, absolutePath, changes, fileStates, changedData)
 }
 
@@ -174,7 +178,10 @@ func (i *Indexer) indexIncrementalFromHashes(
 	previousHashes map[string]string,
 	files []scanner.File,
 ) (Stats, error) {
-	fileDataList := readFileData(files)
+	fileDataList, err := readFileData(files)
+	if err != nil {
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
+	}
 	fileStates := fileStateMap(fileDataList)
 	fileHashes := fileHashesFromStates(fileStates)
 	changes := diffFileHashes(previousHashes, fileHashes)
@@ -197,17 +204,14 @@ func (i *Indexer) applyIncrementalChanges(
 
 	documents, err := i.buildDocuments(ctx, namespace, changedData)
 	if err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	if err := i.vectorStore.ReplaceFiles(ctx, namespace, changes.replacePaths(), documents); err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	totalChunks, err := i.vectorStore.Count(ctx, namespace)
 	if err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	stats := Stats{
 		Namespace:     namespace,
@@ -219,7 +223,7 @@ func (i *Indexer) applyIncrementalChanges(
 		RemovedFiles:  len(changes.removed),
 	}
 	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
-		return Stats{}, err
+		return Stats{}, fmt.Errorf("save index snapshot failed: %w", err)
 	}
 	return stats, nil
 }
@@ -233,8 +237,7 @@ func (i *Indexer) saveNoChangeStats(
 ) (Stats, error) {
 	totalChunks, err := i.vectorStore.Count(ctx, namespace)
 	if err != nil {
-		i.saveFailure(namespace, absolutePath, err)
-		return Stats{}, err
+		return Stats{}, i.failIndex(namespace, absolutePath, err)
 	}
 	stats := Stats{
 		Namespace:    namespace,
@@ -243,7 +246,7 @@ func (i *Indexer) saveNoChangeStats(
 		TotalChunks:  totalChunks,
 	}
 	if err := i.saveSuccess(stats, fileHashes, fileStates); err != nil {
-		return Stats{}, err
+		return Stats{}, fmt.Errorf("save index snapshot failed: %w", err)
 	}
 	return stats, nil
 }
@@ -294,10 +297,10 @@ func (i *Indexer) buildFileDocuments(
 	}
 	vectors, err := i.embedder.EmbedBatch(ctx, texts)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("embed file chunks failed: path=%s chunks=%d: %w", file.RelativePath, len(chunks), err)
 	}
 	if len(vectors) != len(chunks) {
-		return nil, errors.New("embedding count mismatch")
+		return nil, fmt.Errorf("embedding count mismatch: path=%s got=%d want=%d", file.RelativePath, len(vectors), len(chunks))
 	}
 	documents := make([]vectorstore.Document, 0, len(chunks))
 	for chunkIndex, chunk := range chunks {
@@ -352,8 +355,15 @@ func vectorDocument(
 	}, nil
 }
 
-func (i *Indexer) saveFailure(namespace string, absolutePath string, err error) {
-	_ = i.snapshotStore.Save(snapshot.Info{
+func (i *Indexer) failIndex(namespace string, absolutePath string, err error) error {
+	if saveErr := i.saveFailure(namespace, absolutePath, err); saveErr != nil {
+		return errors.Join(err, fmt.Errorf("save failure snapshot failed: %w", saveErr))
+	}
+	return err
+}
+
+func (i *Indexer) saveFailure(namespace string, absolutePath string, err error) error {
+	return i.snapshotStore.Save(snapshot.Info{
 		Path:         absolutePath,
 		Namespace:    namespace,
 		Status:       snapshot.StatusFailed,
@@ -361,12 +371,12 @@ func (i *Indexer) saveFailure(namespace string, absolutePath string, err error) 
 	})
 }
 
-func readFileData(files []scanner.File) []fileData {
+func readFileData(files []scanner.File) ([]fileData, error) {
 	result := make([]fileData, 0, len(files))
 	for _, file := range files {
 		content, err := os.ReadFile(file.AbsolutePath)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("read file failed: path=%s: %w", file.AbsolutePath, err)
 		}
 		result = append(result, fileData{
 			file:    file,
@@ -374,7 +384,7 @@ func readFileData(files []scanner.File) []fileData {
 			hash:    contentHash(content),
 		})
 	}
-	return result
+	return result, nil
 }
 
 func fileStateMap(fileDataList []fileData) map[string]snapshot.FileState {
@@ -411,7 +421,10 @@ func fileHashesFromStates(states map[string]snapshot.FileState) map[string]strin
 	return hashes
 }
 
-func detectFileStateChanges(previous map[string]snapshot.FileState, files []scanner.File) (indexChanges, map[string]snapshot.FileState, []fileData) {
+func detectFileStateChanges(
+	previous map[string]snapshot.FileState,
+	files []scanner.File,
+) (indexChanges, map[string]snapshot.FileState, []fileData, error) {
 	currentStates := scannedFileStateMap(files)
 	changes := indexChanges{}
 	readPaths := make([]string, 0)
@@ -435,8 +448,12 @@ func detectFileStateChanges(previous map[string]snapshot.FileState, files []scan
 	}
 	sort.Strings(readPaths)
 
+	readFileDataList, err := readFileData(selectFiles(files, readPaths))
+	if err != nil {
+		return indexChanges{}, nil, nil, err
+	}
 	readDataByPath := make(map[string]fileData, len(readPaths))
-	for _, data := range readFileData(selectFiles(files, readPaths)) {
+	for _, data := range readFileDataList {
 		readDataByPath[data.file.RelativePath] = data
 	}
 	changedData := make([]fileData, 0, len(readDataByPath))
@@ -464,7 +481,7 @@ func detectFileStateChanges(previous map[string]snapshot.FileState, files []scan
 		}
 	}
 	changes.sort()
-	return changes, currentStates, changedData
+	return changes, currentStates, changedData, nil
 }
 
 func sameFileMetadata(left snapshot.FileState, right snapshot.FileState) bool {

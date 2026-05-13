@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/mazhan465/Agent-Memory/internal/config"
+	"github.com/mazhan465/Agent-Memory/internal/snapshot"
+	"github.com/mazhan465/Agent-Memory/internal/vectorstore"
 )
 
 func TestServerServeInitializeAndListTools(t *testing.T) {
@@ -105,6 +108,35 @@ func TestServerToolCallsIndexSearchStatusAndClear(t *testing.T) {
 	}
 }
 
+func TestServerToolsCallReturnsIndexErrorResult(t *testing.T) {
+	ctx := context.Background()
+	storagePath := t.TempDir()
+	cfg := testConfig(t)
+	cfg.StorageDir = storagePath
+	server := &Server{
+		config:        cfg,
+		embedder:      &failingMCPEmbedder{err: errors.New("embedding service unavailable")},
+		vectorStore:   vectorstore.NewLocalStore(storagePath),
+		snapshotStore: snapshot.NewStore(storagePath),
+	}
+	repo := t.TempDir()
+	writeTestCode(t, repo)
+
+	result, err := server.handleToolsCall(ctx, rawArgs(t, map[string]any{
+		"name":      "index_codebase",
+		"arguments": map[string]any{"path": repo},
+	}))
+	if err != nil {
+		t.Fatalf("handleToolsCall() error = %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("IsError = false, want true")
+	}
+	if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, "embedding service unavailable") {
+		t.Fatalf("tool error content = %+v, want embedding error", result.Content)
+	}
+}
+
 func testConfig(t *testing.T) config.Config {
 	t.Helper()
 	return config.Config{
@@ -137,6 +169,26 @@ func authenticateUser(token string) bool {
 	if err := os.WriteFile(filepath.Join(repo, "auth.go"), content, 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+type failingMCPEmbedder struct {
+	err error
+}
+
+func (e *failingMCPEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	return nil, e.err
+}
+
+func (e *failingMCPEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	return nil, e.err
+}
+
+func (e *failingMCPEmbedder) Dimension() int {
+	return 0
+}
+
+func (e *failingMCPEmbedder) Provider() string {
+	return "failing"
 }
 
 func frameMessage(payload string) string {

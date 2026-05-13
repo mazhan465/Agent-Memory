@@ -72,7 +72,9 @@ func TestOllamaEmbedder_EmbedBatch(t *testing.T) {
 }
 
 func TestOllamaEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
+	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(ollamaErrorResponse{Error: "missing model"})
 	}))
@@ -85,5 +87,9 @@ func TestOllamaEmbedder_EmbedBatchReturnsAPIError(t *testing.T) {
 	_, err = embedder.EmbedBatch(context.Background(), []string{"text"})
 	if err == nil || !strings.Contains(err.Error(), "missing model") {
 		t.Fatalf("EmbedBatch() error = %v, want missing model", err)
+	}
+	wantRequests := defaultEmbeddingRequestRetries + 1
+	if requestCount != wantRequests {
+		t.Fatalf("requestCount = %d, want %d", requestCount, wantRequests)
 	}
 }

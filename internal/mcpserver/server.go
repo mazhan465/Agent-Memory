@@ -458,7 +458,11 @@ func (s *Server) indexPath(ctx context.Context, rootPath string) (indexer.Stats,
 	lineSplitter := splitter.NewLineSplitter(s.config.MaxChunkLines, s.config.ChunkOverlapLines)
 	splitterInstance := splitter.NewTreeSitterSplitter(s.config.MaxChunkLines, s.config.ChunkOverlapLines, lineSplitter)
 	indexerInstance := indexer.New(scannerInstance, splitterInstance, s.embedder, s.vectorStore, s.snapshotStore)
-	return indexerInstance.Index(ctx, rootPath)
+	stats, err := indexerInstance.Index(ctx, rootPath)
+	if err != nil {
+		return indexer.Stats{}, fmt.Errorf("index path failed: path=%s: %w", rootPath, err)
+	}
+	return stats, nil
 }
 
 func makeSearchCodeMatches(matches []vectorstore.SearchResult) []searchCodeMatch {
