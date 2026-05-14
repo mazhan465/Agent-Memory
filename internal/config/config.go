@@ -27,6 +27,7 @@ const (
 	defaultOpenAIEmbeddingModel      = "text-embedding-3-small"
 	defaultOpenAIEmbeddingDimensions = defaultEmbeddingDim
 	defaultOpenAIMaxBatchSize        = 10
+	defaultOpenAIMaxInputLength      = 8192
 	defaultOllamaHost                = "http://127.0.0.1:11434"
 	defaultOllamaEmbeddingModel      = "embeddinggemma"
 	defaultOllamaEmbeddingDimensions = 0
@@ -42,6 +43,7 @@ const (
 	envOpenAIEmbeddingModel          = "AGENT_MEMORY_OPENAI_EMBEDDING_MODEL"
 	envOpenAIEmbeddingDimensions     = "AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS"
 	envOpenAIMaxBatchSize            = "AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE"
+	envOpenAIMaxInputLength          = "AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH"
 	envOllamaHost                    = "AGENT_MEMORY_OLLAMA_HOST"
 	envOllamaEmbeddingModel          = "AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL"
 	envOllamaEmbeddingDimensions     = "AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS"
@@ -71,6 +73,7 @@ type Config struct {
 	OpenAIEmbeddingModel      string
 	OpenAIEmbeddingDimensions int
 	OpenAIMaxBatchSize        int
+	OpenAIMaxInputLength      int
 	OllamaHost                string
 	OllamaEmbeddingModel      string
 	OllamaEmbeddingDimensions int

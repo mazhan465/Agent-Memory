@@ -724,6 +724,7 @@ def write_env_file(install_root: Path, embedding: str, args: argparse.Namespace)
             f"AGENT_MEMORY_OPENAI_BASE_URL={args.openai_base_url}",
             "AGENT_MEMORY_OPENAI_API_KEY=replace-with-your-api-key",
             f"AGENT_MEMORY_OPENAI_EMBEDDING_MODEL={args.openai_model}",
+            "AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH=8192",
         ])
     install_root.mkdir(parents=True, exist_ok=True)
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

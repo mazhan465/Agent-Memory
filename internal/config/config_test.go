@@ -25,6 +25,7 @@ func TestLoadEmbeddingConfigFromEnv(t *testing.T) {
 	t.Setenv(envOpenAIEmbeddingModel, "text-embedding-test")
 	t.Setenv(envOpenAIEmbeddingDimensions, "768")
 	t.Setenv(envOpenAIMaxBatchSize, "5")
+	t.Setenv(envOpenAIMaxInputLength, "4096")
 	t.Setenv(envOllamaHost, " http://localhost:11434 ")
 	t.Setenv(envOllamaEmbeddingModel, "nomic-embed-text")
 	t.Setenv(envOllamaEmbeddingDimensions, "384")
@@ -123,6 +124,9 @@ func TestDefaultCodeSearchStrategyPrefersKeywords(t *testing.T) {
 	if cfg.OpenAIMaxBatchSize != 10 {
 		t.Fatalf("OpenAIMaxBatchSize = %d, want 10", cfg.OpenAIMaxBatchSize)
 	}
+	if cfg.OpenAIMaxInputLength != 8192 {
+		t.Fatalf("OpenAIMaxInputLength = %d, want 8192", cfg.OpenAIMaxInputLength)
+	}
 	codeStrategy := cfg.SearchStrategy(SearchStrategyCode)
 	if codeStrategy.SemanticWeight != 0.3 || codeStrategy.KeywordWeight != 0.7 {
 		t.Fatalf("code strategy = %+v, want semantic=0.3 keyword=0.7", codeStrategy)
@@ -142,6 +146,7 @@ embedding:
     model: text-embedding-3-large
     dimensions: 1536
     max_batch_size: 6
+    max_input_length: 8192
   ollama:
     host: http://localhost:11435
     model: nomic-embed-text
@@ -195,8 +200,13 @@ search:
 	if cfg.OpenAIAPIKey != "yaml-api-key-placeholder" || cfg.OpenAIEmbeddingModel != "text-embedding-3-large" {
 		t.Fatalf("openai config = key:%s model:%s", cfg.OpenAIAPIKey, cfg.OpenAIEmbeddingModel)
 	}
-	if cfg.OpenAIEmbeddingDimensions != 1536 || cfg.OpenAIMaxBatchSize != 6 {
-		t.Fatalf("openai dimensions/batch = %d/%d, want 1536/6", cfg.OpenAIEmbeddingDimensions, cfg.OpenAIMaxBatchSize)
+	if cfg.OpenAIEmbeddingDimensions != 1536 || cfg.OpenAIMaxBatchSize != 6 || cfg.OpenAIMaxInputLength != 8192 {
+		t.Fatalf(
+			"openai dimensions/batch/input = %d/%d/%d, want 1536/6/8192",
+			cfg.OpenAIEmbeddingDimensions,
+			cfg.OpenAIMaxBatchSize,
+			cfg.OpenAIMaxInputLength,
+		)
 	}
 	if cfg.OllamaEmbeddingDimensions != 384 {
 		t.Fatalf("OllamaEmbeddingDimensions = %d, want 384", cfg.OllamaEmbeddingDimensions)
@@ -290,6 +300,7 @@ func setIsolatedHome(t *testing.T) {
 		envOpenAIEmbeddingModel,
 		envOpenAIEmbeddingDimensions,
 		envOpenAIMaxBatchSize,
+		envOpenAIMaxInputLength,
 		envOllamaHost,
 		envOllamaEmbeddingModel,
 		envOllamaEmbeddingDimensions,

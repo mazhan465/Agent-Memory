@@ -178,6 +178,7 @@ export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1
 export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
+export AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH=8192
 ```
 
 Example Milvus setup:
@@ -312,6 +313,7 @@ export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
 export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
+export AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH=8192
 
 ./bin/code-context index /path/to/repo
 ```
@@ -452,6 +454,7 @@ Evaluation output includes recall quality metrics and runtime efficiency metrics
 | `AGENT_MEMORY_OPENAI_EMBEDDING_MODEL` | OpenAI-compatible embedding model |
 | `AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS` | OpenAI-compatible output vector dimensions, defaults to `1024` |
 | `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible batch size, defaults to `10` |
+| `AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH` | OpenAI-compatible per-input text length limit, defaults to `8192` |
 | `AGENT_MEMORY_OLLAMA_HOST` | Ollama endpoint |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding model |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS` | Optional Ollama `/api/embed` output dimensions; `0` or unset uses the model default |

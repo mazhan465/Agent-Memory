@@ -33,11 +33,12 @@ type embeddingConfig struct {
 }
 
 type openAIConfig struct {
-	BaseURL      string `yaml:"base_url"`
-	APIKey       string `yaml:"api_key"`
-	Model        string `yaml:"model"`
-	Dimensions   int    `yaml:"dimensions"`
-	MaxBatchSize int    `yaml:"max_batch_size"`
+	BaseURL        string `yaml:"base_url"`
+	APIKey         string `yaml:"api_key"`
+	Model          string `yaml:"model"`
+	Dimensions     int    `yaml:"dimensions"`
+	MaxBatchSize   int    `yaml:"max_batch_size"`
+	MaxInputLength int    `yaml:"max_input_length"`
 }
 
 type ollamaConfig struct {
@@ -124,6 +125,7 @@ func defaultConfig() (Config, error) {
 		OpenAIEmbeddingModel:      defaultOpenAIEmbeddingModel,
 		OpenAIEmbeddingDimensions: defaultOpenAIEmbeddingDimensions,
 		OpenAIMaxBatchSize:        defaultOpenAIMaxBatchSize,
+		OpenAIMaxInputLength:      defaultOpenAIMaxInputLength,
 		OllamaHost:                defaultOllamaHost,
 		OllamaEmbeddingModel:      defaultOllamaEmbeddingModel,
 		OllamaEmbeddingDimensions: defaultOllamaEmbeddingDimensions,
@@ -202,6 +204,9 @@ func applyEmbeddingConfig(cfg *Config, fileCfg embeddingConfig) {
 	}
 	if fileCfg.OpenAI.MaxBatchSize > 0 {
 		cfg.OpenAIMaxBatchSize = fileCfg.OpenAI.MaxBatchSize
+	}
+	if fileCfg.OpenAI.MaxInputLength > 0 {
+		cfg.OpenAIMaxInputLength = fileCfg.OpenAI.MaxInputLength
 	}
 	if value := strings.TrimSpace(fileCfg.Ollama.Host); value != "" {
 		cfg.OllamaHost = value
@@ -291,6 +296,7 @@ func applyEnvConfig(cfg *Config) {
 	cfg.OpenAIEmbeddingModel = getString(envOpenAIEmbeddingModel, cfg.OpenAIEmbeddingModel)
 	cfg.OpenAIEmbeddingDimensions = getPositiveInt(envOpenAIEmbeddingDimensions, cfg.OpenAIEmbeddingDimensions)
 	cfg.OpenAIMaxBatchSize = getPositiveInt(envOpenAIMaxBatchSize, cfg.OpenAIMaxBatchSize)
+	cfg.OpenAIMaxInputLength = getPositiveInt(envOpenAIMaxInputLength, cfg.OpenAIMaxInputLength)
 	cfg.OllamaHost = getString(envOllamaHost, cfg.OllamaHost)
 	cfg.OllamaEmbeddingModel = getString(envOllamaEmbeddingModel, cfg.OllamaEmbeddingModel)
 	cfg.OllamaEmbeddingDimensions = getPositiveInt(envOllamaEmbeddingDimensions, cfg.OllamaEmbeddingDimensions)
@@ -346,6 +352,7 @@ func writeEmbeddingConfig(builder *strings.Builder, cfg Config) {
 	fmt.Fprintf(builder, "  #   model: %q\n", cfg.OpenAIEmbeddingModel)
 	fmt.Fprintf(builder, "  #   dimensions: %d\n", cfg.OpenAIEmbeddingDimensions)
 	fmt.Fprintf(builder, "  #   max_batch_size: %d\n", cfg.OpenAIMaxBatchSize)
+	fmt.Fprintf(builder, "  #   max_input_length: %d\n", cfg.OpenAIMaxInputLength)
 	builder.WriteString("\n")
 	builder.WriteString("  # provider 为 ollama 时启用；默认不启用。\n")
 	builder.WriteString("  # ollama:\n")

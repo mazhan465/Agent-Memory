@@ -23,6 +23,7 @@ const (
 	defaultOpenAIBaseURL        = "https://api.openai.com/v1"
 	defaultOpenAIEmbeddingModel = "text-embedding-3-small"
 	defaultOpenAIMaxBatchSize   = 10
+	defaultOpenAIMaxInputLength = 8192
 	defaultOpenAIHTTPTimeout    = 60 * time.Second
 	maxOpenAIResponseBytes      = 16 << 20
 	maxOpenAIErrorPreviewBytes  = 512
@@ -30,12 +31,13 @@ const (
 
 // OpenAIOptions 表示 OpenAI-compatible embedding 客户端配置。
 type OpenAIOptions struct {
-	BaseURL      string
-	APIKey       string
-	Model        string
-	Dimensions   int
-	MaxBatchSize int
-	HTTPClient   *http.Client
+	BaseURL        string
+	APIKey         string
+	Model          string
+	Dimensions     int
+	MaxBatchSize   int
+	MaxInputLength int
+	HTTPClient     *http.Client
 }
 
 // OpenAIEmbedder 通过 OpenAI-compatible embeddings API 生成文本向量。
@@ -45,6 +47,7 @@ type OpenAIEmbedder struct {
 	model               string
 	requestedDimensions int
 	maxBatchSize        int
+	maxInputLength      int
 	httpClient          *http.Client
 	dimension           int
 	mu                  sync.RWMutex
@@ -70,6 +73,10 @@ func NewOpenAIEmbedder(options OpenAIOptions) (*OpenAIEmbedder, error) {
 	if maxBatchSize <= 0 {
 		maxBatchSize = defaultOpenAIMaxBatchSize
 	}
+	maxInputLength := options.MaxInputLength
+	if maxInputLength <= 0 {
+		maxInputLength = defaultOpenAIMaxInputLength
+	}
 
 	httpClient := options.HTTPClient
 	if httpClient == nil {
@@ -82,6 +89,7 @@ func NewOpenAIEmbedder(options OpenAIOptions) (*OpenAIEmbedder, error) {
 		model:               model,
 		requestedDimensions: options.Dimensions,
 		maxBatchSize:        maxBatchSize,
+		maxInputLength:      maxInputLength,
 		httpClient:          httpClient,
 	}, nil
 }
@@ -104,7 +112,7 @@ func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 	vectors := make([][]float32, 0, len(texts))
 	for start := 0; start < len(texts); start += e.maxBatchSize {
 		end := min(start+e.maxBatchSize, len(texts))
-		batchTexts := texts[start:end]
+		batchTexts := truncateOpenAIInputs(texts[start:end], e.maxInputLength)
 		batchVectors, err := retryEmbeddingRequest(ctx, e.Provider(), func(ctx context.Context) ([][]float32, error) {
 			return e.embedBatch(ctx, batchTexts)
 		})
@@ -114,6 +122,31 @@ func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]fl
 		vectors = append(vectors, batchVectors...)
 	}
 	return vectors, nil
+}
+
+func truncateOpenAIInputs(texts []string, maxInputLength int) []string {
+	if maxInputLength <= 0 {
+		return texts
+	}
+	truncated := make([]string, len(texts))
+	for index, text := range texts {
+		truncated[index] = truncateStringRunes(text, maxInputLength)
+	}
+	return truncated
+}
+
+func truncateStringRunes(text string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return text
+	}
+	count := 0
+	for index := range text {
+		if count == maxRunes {
+			return text[:index]
+		}
+		count++
+	}
+	return text
 }
 
 func (e *OpenAIEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {

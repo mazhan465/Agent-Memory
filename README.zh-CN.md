@@ -178,6 +178,7 @@ export AGENT_MEMORY_OPENAI_BASE_URL=https://api.openai.com/v1
 export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
+export AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH=8192
 ```
 
 Milvus 示例：
@@ -312,6 +313,7 @@ export AGENT_MEMORY_OPENAI_API_KEY=your-api-key
 export AGENT_MEMORY_OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 export AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS=1024
 export AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE=10
+export AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH=8192
 
 ./bin/code-context index /path/to/repo
 ```
@@ -452,6 +454,7 @@ EOF
 | `AGENT_MEMORY_OPENAI_EMBEDDING_MODEL` | OpenAI-compatible embedding 模型 |
 | `AGENT_MEMORY_OPENAI_EMBEDDING_DIMENSIONS` | OpenAI-compatible 输出向量维度，默认 `1024` |
 | `AGENT_MEMORY_OPENAI_MAX_BATCH_SIZE` | OpenAI-compatible 单次批量请求条数，默认 `10` |
+| `AGENT_MEMORY_OPENAI_MAX_INPUT_LENGTH` | OpenAI-compatible 单条输入文本长度限制，默认 `8192` |
 | `AGENT_MEMORY_OLLAMA_HOST` | Ollama 地址 |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_MODEL` | Ollama embedding 模型 |
 | `AGENT_MEMORY_OLLAMA_EMBEDDING_DIMENSIONS` | 可选 Ollama `/api/embed` 输出维度；`0` 或未设置表示使用模型默认维度 |
