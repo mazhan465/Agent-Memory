@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mazhan465/Agent-Memory/internal/catalog"
 	"github.com/mazhan465/Agent-Memory/internal/config"
@@ -27,6 +28,8 @@ import (
 const (
 	exitCodeOK    = 0
 	exitCodeError = 1
+
+	defaultMilvusConnectTimeout = 10 * time.Second
 )
 
 type app struct {
@@ -59,6 +62,10 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if args[0] == "status" {
+		return runStatus(cfg, args[1:])
+	}
+
 	application, err := newApp(ctx, cfg)
 	if err != nil {
 		return err
@@ -77,8 +84,6 @@ func run(ctx context.Context, args []string) error {
 		return application.runSource(ctx, args[1:])
 	case "eval":
 		return application.runEval(ctx, args[1:])
-	case "status":
-		return application.runStatus(args[1:])
 	case "clear":
 		return application.runClear(ctx, args[1:])
 	case "help", "-h", "--help":
@@ -137,7 +142,9 @@ func newVectorStore(ctx context.Context, cfg config.Config) (vectorstore.VectorS
 	case "", "local":
 		return vectorstore.NewLocalStore(cfg.StorageDir), nil
 	case "milvus":
-		return vectorstore.NewMilvusStore(ctx, vectorstore.MilvusOptions{
+		connectCtx, cancel := context.WithTimeout(ctx, defaultMilvusConnectTimeout)
+		defer cancel()
+		return vectorstore.NewMilvusStore(connectCtx, vectorstore.MilvusOptions{
 			Address:        cfg.MilvusAddress,
 			Username:       cfg.MilvusUsername,
 			Password:       cfg.MilvusPassword,
@@ -232,7 +239,7 @@ func printIndexStats(prefix string, stats indexer.Stats) {
 	)
 }
 
-func (a *app) runStatus(args []string) error {
+func runStatus(cfg config.Config, args []string) error {
 	if len(args) != 1 {
 		return errors.New("usage: code-context status <path>")
 	}
@@ -241,7 +248,8 @@ func (a *app) runStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	info, err := a.snapshotStore.Get(namespace)
+	snapshotStore := snapshot.NewStore(cfg.StorageDir)
+	info, err := snapshotStore.Get(namespace)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Printf("path=%s namespace=%s status=not_indexed\n", absolutePath, namespace)
